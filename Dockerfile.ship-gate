@@ -1,0 +1,52 @@
+# Dockerfile.ship-gate — reproducible Ubuntu 24.04 environment for the
+# L7 ship-gate test. NOT a shipping artifact. Used by
+# `scripts/ship-gate.sh` to install the signed .deb, boot the Vaner
+# daemon, drive the Adopt flow via the daemon's HTTP surface, and
+# confirm the handoff file lands where the /vaner:next skill expects
+# to find it.
+#
+# Why Ubuntu 24.04 and not 22.04? 24.04 is the current LTS — if the
+# package installs cleanly here it'll install cleanly on 22.04 too
+# (glibc compatibility flows downward when we build on 22.04 runners).
+
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV LC_ALL=C.UTF-8 LANG=C.UTF-8
+
+# Runtime deps the .deb declares + basics the ship-gate script needs.
+# We deliberately don't install tauri/rust build deps here — we're
+# testing the installable artifact, not rebuilding it.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      gnupg \
+      jq \
+      dpkg-sig \
+      python3 \
+      python3-pip \
+      python3-venv \
+      libwebkit2gtk-4.1-0 \
+      libgtk-3-0 \
+      libayatana-appindicator3-1 \
+      librsvg2-2 \
+      xvfb \
+      dbus \
+      dbus-x11 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Make the runtime XDG paths predictable. Ship-gate checks land here.
+RUN useradd --create-home --shell /bin/bash vaner \
+    && mkdir -p /home/vaner/.local/state/vaner /home/vaner/.config/vaner \
+    && chown -R vaner:vaner /home/vaner
+
+USER vaner
+ENV HOME=/home/vaner \
+    XDG_STATE_HOME=/home/vaner/.local/state \
+    XDG_CONFIG_HOME=/home/vaner/.config \
+    XDG_DATA_HOME=/home/vaner/.local/share \
+    XDG_RUNTIME_DIR=/tmp/xdg-runtime
+
+WORKDIR /home/vaner
+
+CMD ["/bin/bash"]

@@ -18,15 +18,54 @@ GNOME on Wayland needs `gnome-shell-extension-appindicator` for the
 tray icon to appear — the app detects this at first launch and
 surfaces install guidance.
 
+## Install
+
+Signed `.deb` verified against Vaner's release key. Pipe-to-shell is
+fine for this one because the script pins the fingerprint in its own
+source — if the uploaded pubkey ever gets swapped, the install
+aborts with a fingerprint-mismatch error.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop-linux/main/scripts/install.sh | bash
+```
+
+Or, for the paranoid (recommended) — read the script first:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop-linux/main/scripts/install.sh \
+  -o install.sh
+less install.sh     # confirm the VANER_RELEASE_FPR pin against docs/RELEASE_KEY_SETUP.md
+bash install.sh
+```
+
+Manual verification path:
+
+```bash
+# Grab the latest release + detached signature
+VER=$(curl -fsSL https://api.github.com/repos/Borgels/vaner-desktop-linux/releases/latest | jq -r .tag_name)
+curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner_${VER#v}_amd64.deb
+curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner_${VER#v}_amd64.deb.asc
+curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/release-key.asc
+
+# Import + verify
+gpg --import release-key.asc
+gpg --verify vaner_${VER#v}_amd64.deb.asc vaner_${VER#v}_amd64.deb
+sudo apt install ./vaner_${VER#v}_amd64.deb
+```
+
+The release pubkey fingerprint is pinned in [`scripts/install.sh`](scripts/install.sh);
+cross-check against [docs/RELEASE_KEY_SETUP.md](docs/RELEASE_KEY_SETUP.md)
+and `keys.openpgp.org`.
+
 ## Status
 
 - [x] L1: `vaner-contract` crate (upstream)
 - [x] L2: conformance fixtures bridge (upstream)
-- [x] L3: Swift conformance test consumption (TODO — schedule with Vaner tag)
-- [ ] L4: Tauri app skeleton *(this repo — in progress)*
-- [ ] L5: tray + popover + SSE wiring
-- [ ] L6: `.deb` packaging + CI release workflow
-- [ ] L7: end-to-end ship gate on a fresh Ubuntu 24.04 VM
+- [x] L3: Swift conformance test consumption (scheduled with Vaner tag)
+- [x] L4: Tauri app skeleton
+- [x] L5: tray + popover + menu + first-run AppIndicator modal
+- [x] L6: signed `.deb` release workflow + install.sh verification
+- [x] L7: Docker ship-gate + manual smoke runbook (see [`docs/SHIP_GATE.md`](docs/SHIP_GATE.md))
 
 ## Build
 

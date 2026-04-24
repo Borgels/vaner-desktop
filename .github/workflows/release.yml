@@ -1,0 +1,123 @@
+name: Release
+
+# Fires on semver tags. Manual dispatch is also allowed for dry-runs
+# but the workflow refuses to publish unless a matching tag exists.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Skip the GitHub Release upload (build + sign + verify only)"
+        required: false
+        default: "true"
+
+permissions:
+  contents: write # publish releases
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04 # oldest supported glibc so the .deb runs on 22.04 and newer
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+        with:
+          persist-credentials: false
+
+      - name: refuse unsigned releases
+        run: |
+          if grep -q "REPLACE_WITH_40_CHAR_FINGERPRINT" scripts/install.sh \
+             || ! grep -q "BEGIN PGP PUBLIC KEY BLOCK" scripts/release-key.asc \
+             || grep -q "Placeholder\." scripts/release-key.asc; then
+            echo "::error::scripts/install.sh still has the placeholder fingerprint"
+            echo "::error::or scripts/release-key.asc still has the placeholder body."
+            echo "::error::Complete docs/RELEASE_KEY_SETUP.md and commit the real key first."
+            exit 1
+          fi
+
+      # Tauri prerequisites for the Linux build.
+      - name: install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            dpkg-sig \
+            gnupg
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: corepack enable && corepack prepare pnpm@latest --activate
+      - run: pnpm install --no-frozen-lockfile
+
+      # Flip bundle.active on at build-time only — keeps CI fast for
+      # non-release runs by default.
+      - name: enable bundle for this run
+        run: |
+          sed -i 's/"active": false,/"active": true,/' src-tauri/tauri.conf.json
+          grep '"active":' src-tauri/tauri.conf.json
+
+      - name: build .deb via tauri-bundler
+        run: pnpm tauri build --bundles deb
+
+      - name: collect artifact path
+        id: collect
+        run: |
+          deb_path=$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name "*.deb" -print -quit)
+          if [[ -z "$deb_path" ]]; then
+            echo "::error::tauri-bundler produced no .deb"
+            exit 1
+          fi
+          echo "deb_path=$deb_path" >> "$GITHUB_OUTPUT"
+          ls -la "$(dirname "$deb_path")"
+
+      - name: sign .deb + SHA256SUMS
+        env:
+          VANER_RELEASE_GPG_PRIVKEY: ${{ secrets.VANER_RELEASE_GPG_PRIVKEY }}
+          VANER_RELEASE_GPG_PASSPHRASE: ${{ secrets.VANER_RELEASE_GPG_PASSPHRASE }}
+          VANER_RELEASE_GPG_FINGERPRINT: ${{ secrets.VANER_RELEASE_GPG_FINGERPRINT }}
+        run: |
+          chmod +x scripts/ci/sign-deb.sh
+          ./scripts/ci/sign-deb.sh "${{ steps.collect.outputs.deb_path }}"
+
+      - name: verify signatures locally before upload
+        run: |
+          chmod +x scripts/ci/verify-deb.sh
+          ./scripts/ci/verify-deb.sh "${{ steps.collect.outputs.deb_path }}"
+
+      - name: publish GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2
+        with:
+          files: |
+            ${{ steps.collect.outputs.deb_path }}
+            ${{ steps.collect.outputs.deb_path }}.asc
+            src-tauri/target/release/bundle/deb/SHA256SUMS
+            src-tauri/target/release/bundle/deb/SHA256SUMS.asc
+            scripts/release-key.asc
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+      - name: dry-run notice
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "Dry run — artifacts built + signed + verified, but no GitHub Release was created."
+          echo "deb:       ${{ steps.collect.outputs.deb_path }}"
+          ls -la "$(dirname '${{ steps.collect.outputs.deb_path }}')"
