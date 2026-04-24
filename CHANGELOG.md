@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-04-24
+
+Initial release of the Vaner Linux desktop companion.
+
 ### Added (L5 — UX)
 - System tray with colored Vaner brand mark (sourced from the
   `docs/handoff/vaner-desktop/brand/` package). Both left-click and

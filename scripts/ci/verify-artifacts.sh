@@ -5,6 +5,10 @@
 set -euo pipefail
 
 bundle_dir=${1:?usage: verify-artifacts.sh <bundle-dir>}
+# Absolute path — the SHA256SUMS cross-check subshell `cd`s into the
+# individual artifact dirs and would otherwise resolve $bundle_dir
+# against the wrong cwd.
+bundle_dir=$(cd "$bundle_dir" && pwd -P)
 pubkey_path="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/release-key.asc"
 [[ -f "$pubkey_path" ]] || { echo "ERROR: scripts/release-key.asc missing" >&2; exit 2; }
 
