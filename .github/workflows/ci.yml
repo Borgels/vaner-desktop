@@ -42,7 +42,7 @@ jobs:
           node-version: "22"
 
       - run: corepack enable && corepack prepare pnpm@latest --activate
-      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm install --frozen-lockfile
 
       - name: svelte-check
         run: pnpm check

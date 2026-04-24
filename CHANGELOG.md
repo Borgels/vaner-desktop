@@ -95,6 +95,10 @@
   docs site all point at the new host. The fallback
   `https://borgels.github.io/vaner-desktop-linux` stays valid via
   the GitHub-managed rewrite.
+- `pnpm-lock.yaml` committed. CI + release workflows both run
+  `pnpm install --frozen-lockfile` now — deterministic installs
+  across runs, and lock drift fails loudly in CI instead of
+  silently reconciling.
 
 
 

@@ -64,7 +64,7 @@ jobs:
           node-version: "22"
 
       - run: corepack enable && corepack prepare pnpm@latest --activate
-      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm install --frozen-lockfile
 
       - name: enable bundle for this run
         run: |
