@@ -85,8 +85,8 @@ if [[ "$MODE" == "apt" ]]; then
   echo "→ apt update …"
   sudo apt update
 
-  echo "→ apt install vaner …"
-  sudo apt install -y vaner
+  echo "→ apt install vaner-desktop …"
+  sudo apt install -y vaner-desktop
 
   echo
   echo "Installed via apt. Future releases arrive through \`apt upgrade\`."

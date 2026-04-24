@@ -20,7 +20,7 @@
 #   echo "deb [signed-by=/etc/apt/keyrings/vaner.gpg] \
 #        https://apt.vaner.ai stable main" \
 #       | sudo tee /etc/apt/sources.list.d/vaner.list
-#   sudo apt update && sudo apt install vaner-desktop-linux
+#   sudo apt update && sudo apt install vaner-desktop
 #
 # Required env:
 #   VANER_RELEASE_GPG_PRIVKEY, VANER_RELEASE_GPG_PASSPHRASE,
@@ -81,6 +81,16 @@ cat > "$repo_root/conf/options" <<EOF
 verbose
 basedir $repo_root
 EOF
+
+# Historical package-name rename (2026-04 / pre-0.1.0 release):
+# the desktop client was briefly published as the apt package `vaner`
+# before we reserved that name for the daemon CLI. Evict any stale
+# entry of the old name so an existing clone of gh-pages doesn't keep
+# advertising it. `reprepro remove` is a no-op once the entry is gone.
+echo "→ reprepro remove stable vaner (legacy package name, safe no-op if absent)"
+reprepro --basedir "$repo_root" \
+         --gnupghome "$gnupghome" \
+         remove stable vaner || true
 
 # Include each provided .deb. reprepro is idempotent on re-runs for
 # the same version; if we're re-releasing the same .deb it just no-
@@ -152,7 +162,7 @@ echo "deb [signed-by=/etc/apt/keyrings/vaner.gpg] https://apt.vaner.ai stable ma
   | sudo tee /etc/apt/sources.list.d/vaner.list
 
 sudo apt update
-sudo apt install vaner-desktop-linux</code></pre>
+sudo apt install vaner-desktop</code></pre>
 
   <p class="hint">Release key fingerprint:
     <code>506B8FA959917D530E5EE7203D219B47A7E4F046</code>

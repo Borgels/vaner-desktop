@@ -25,8 +25,14 @@ Three paths, all signed — pick whichever fits your workflow:
 ### 1. Apt repository (recommended — auto-upgrades via `apt upgrade`)
 
 The installer adds a signed apt repo at `https://apt.vaner.ai` and
-installs the `vaner` package. Every future release arrives through
-`apt upgrade` without you running anything else.
+installs the `vaner-desktop` package. Every future release arrives
+through `apt upgrade` without you running anything else.
+
+> **Naming:** the desktop client's apt package is `vaner-desktop`.
+> The bare `vaner` name is reserved for the daemon CLI (the Python
+> engine that watches your sources and exposes the cockpit on
+> 127.0.0.1:8473), so future apt distribution of the engine doesn't
+> collide.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop-linux/main/scripts/install.sh | bash
@@ -39,13 +45,11 @@ curl -fsSL https://apt.vaner.ai/release-key.asc \
   | sudo gpg --dearmor -o /etc/apt/keyrings/vaner.gpg
 echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/vaner.gpg] https://apt.vaner.ai stable main" \
   | sudo tee /etc/apt/sources.list.d/vaner.list
-sudo apt update && sudo apt install vaner
+sudo apt update && sudo apt install vaner-desktop
 ```
 
 `arch=amd64` keeps apt from asking the repo for i386 package lists
-(the repo is amd64-only). The apt package is named `vaner` — the
-repo slug `vaner-desktop-linux` is the GitHub identity, not the apt
-name.
+(the repo is amd64-only).
 
 ### 2. One-off `.deb` (no apt-repo registration)
 
