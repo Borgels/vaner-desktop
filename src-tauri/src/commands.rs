@@ -31,21 +31,16 @@ pub async fn adopt_prediction(
     app: tauri::AppHandle,
     prediction_id: String,
 ) -> Result<String, String> {
-    let (resolution, raw) = state
-        .engine
-        .adopt(&prediction_id)
-        .await
-        .map_err(human)?;
+    let (resolution, raw) = state.engine.adopt(&prediction_id).await.map_err(human)?;
 
     // File-drop on a blocking thread — JSONSerialization + fs::rename
     // shouldn't block the main task.
     let raw_bytes = raw.to_vec();
     let resolution_for_stash = resolution.clone();
-    let stash_result = tokio::task::spawn_blocking(move || {
-        stash_adopt(&resolution_for_stash, &raw_bytes)
-    })
-    .await
-    .map_err(|e| format!("handoff task join error: {e}"))?;
+    let stash_result =
+        tokio::task::spawn_blocking(move || stash_adopt(&resolution_for_stash, &raw_bytes))
+            .await
+            .map_err(|e| format!("handoff task join error: {e}"))?;
     stash_result.map_err(|e| format!("handoff stash failed: {e}"))?;
 
     let clipboard_body = resolution
@@ -68,9 +63,7 @@ fn human(err: EngineClientError) -> String {
             "Vaner can't reach the prediction engine right now.".into()
         }
         EngineClientError::InvalidInput => "Invalid prediction.".into(),
-        EngineClientError::Transport(_) => {
-            "Vaner is unreachable. Is the daemon running?".into()
-        }
+        EngineClientError::Transport(_) => "Vaner is unreachable. Is the daemon running?".into(),
         other => format!("{other}"),
     }
 }
