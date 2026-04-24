@@ -105,7 +105,7 @@ your system's normal update flow — pick one, not both.
 - [x] L4: Tauri app skeleton
 - [x] L5: tray + popover + menu + first-run AppIndicator modal
 - [x] L6: signed `.deb` release workflow + install.sh verification
-- [x] L7: Docker ship-gate + manual smoke runbook (see [`docs/SHIP_GATE.md`](docs/SHIP_GATE.md))
+- [x] L7: Docker ship-gate (`Dockerfile.ship-gate` + `scripts/ship-gate.sh`)
 
 ## Build
 

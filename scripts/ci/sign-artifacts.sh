@@ -6,8 +6,7 @@
 # The embedded `dpkg-sig` signature is applied to .deb files only.
 # .AppImage files use detached-signature-only.
 #
-# Required env (from GitHub Secrets — see
-# docs/RELEASE_KEY_SETUP.md):
+# Required env (from GitHub Secrets):
 #   VANER_RELEASE_GPG_PRIVKEY     — base64(armored private key)
 #   VANER_RELEASE_GPG_PASSPHRASE  — key passphrase
 #   VANER_RELEASE_GPG_FINGERPRINT — expected 40-char fingerprint

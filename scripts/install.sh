@@ -19,8 +19,8 @@
 #
 # Regardless of mode, the script refuses to install unless the
 # downloaded pubkey's fingerprint matches the pin below. That pin is
-# the only trust anchor — double-check against RELEASE_KEY_SETUP.md
-# and keys.openpgp.org if you're paranoid (you should be).
+# the only trust anchor — double-check against the README and
+# keys.openpgp.org if you're paranoid (you should be).
 
 set -euo pipefail
 
@@ -30,9 +30,9 @@ set -euo pipefail
 # value before trusting any signature — changing this line is a
 # social event that deserves an announcement in the repo README.
 #
-# Source of truth: docs/RELEASE_KEY_SETUP.md
 # Verify: `gpg --fingerprint release@vaner.ai` after importing
-#         scripts/release-key.asc
+#         scripts/release-key.asc, or check
+#         <https://keys.openpgp.org/search?q=release@vaner.ai>.
 VANER_RELEASE_FPR="506B8FA959917D530E5EE7203D219B47A7E4F046"
 # --------------------------------------------------------------------
 

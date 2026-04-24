@@ -25,10 +25,9 @@ Initial release of the Vaner Linux desktop companion.
   events, and future UI feedback route through it.
 
 ### Added (L6 — Release)
-- **Dedicated Vaner release GPG key** signs every `.deb`. Onboarding
-  runbook at [`docs/RELEASE_KEY_SETUP.md`](docs/RELEASE_KEY_SETUP.md)
-  covers generation, GitHub Secrets upload, keyserver publication,
-  and rotation policy.
+- **Dedicated Vaner release GPG key** signs every `.deb`. Key
+  generation, GitHub Secrets upload, keyserver publication, and
+  rotation policy are documented internally.
 - `scripts/ci/sign-deb.sh` — embedded (`dpkg-sig`) + detached
   (`.deb.asc`) + signed `SHA256SUMS.asc`. Fingerprint sanity-check
   against the repo-committed pubkey before any signing happens.
@@ -54,8 +53,6 @@ Initial release of the Vaner Linux desktop companion.
   verify, `apt install`, daemon boot, /predictions/active fetch,
   Adopt POST, handoff-file write, `/vaner:next` step-0 simulation,
   `apt purge` cleanup check.
-- [`docs/SHIP_GATE.md`](docs/SHIP_GATE.md) — runbook for both the
-  automated Docker gate and the manual-smoke checklist before tagging.
 
 ### Changed
 - Repo renamed from `vaner-linux` to `vaner-desktop-linux` to align
@@ -84,9 +81,9 @@ Initial release of the Vaner Linux desktop companion.
 - `scripts/install.sh` default mode switched to `apt` (registers the
   repo + `apt install`); `VANER_MODE=deb` keeps the one-off .deb
   flow for ephemeral installs and CI.
-- `docs/RELEASE_KEY_SETUP.md` grew Part 2 (minisign updater key) +
-  Part 3 (GitHub Pages apt-repo setup + optional `apt.vaner.ai`
-  custom domain via CNAME).
+- Release-key and apt-repo setup, minisign updater key generation,
+  and the `apt.vaner.ai` custom-domain wiring are documented
+  internally.
 
 ### Deferred to 0.1.1
 - Preferences window content.
@@ -95,8 +92,8 @@ Initial release of the Vaner Linux desktop companion.
 ### Changed
 - Apt repository is published at `https://apt.vaner.ai` (custom
   domain on the gh-pages branch via `CNAME`). Install URLs in
-  `scripts/install.sh`, README, RELEASE_KEY_SETUP, and the Vaner
-  docs site all point at the new host. The fallback
+  `scripts/install.sh`, README, and the Vaner docs site all point
+  at the new host. The fallback
   `https://borgels.github.io/vaner-desktop-linux` stays valid via
   the GitHub-managed rewrite.
 - `pnpm-lock.yaml` committed. CI + release workflows both run
