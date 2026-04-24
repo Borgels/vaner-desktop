@@ -1,0 +1,6 @@
+Archive: stable
+Component: main
+Origin: Vaner
+Label: Vaner Desktop Linux
+Architecture: amd64
+Description: Signed apt repository for the Vaner desktop Linux companion.

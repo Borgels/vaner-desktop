@@ -8,14 +8,29 @@
     body { font-family: ui-sans-serif, system-ui, sans-serif; max-width: 680px; margin: 48px auto; padding: 0 20px; line-height: 1.55; color: #1a1720; }
     h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
     h1 .accent { color: #b27a2e; }
-    p { color: #555; }
+    pre { background: #f4efe8; padding: 14px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     a { color: #6d4f9a; }
+    .hint { font-size: 13px; color: #555; }
   </style>
 </head>
 <body>
   <h1>vaner<span class="accent">_</span> · apt repository</h1>
-  <p>This page is a placeholder. The signed Debian repository content
-     lands here on the first <code>v*.*.*</code> release tag.</p>
-  <p>Source: <a href="https://github.com/Borgels/vaner-desktop-linux">github.com/Borgels/vaner-desktop-linux</a>.</p>
+  <p>Signed <code>.deb</code> packages for the Vaner Linux desktop companion.</p>
+
+  <pre><code>curl -fsSL https://apt.vaner.ai/release-key.asc \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/vaner.gpg
+
+echo "deb [signed-by=/etc/apt/keyrings/vaner.gpg] https://apt.vaner.ai stable main" \
+  | sudo tee /etc/apt/sources.list.d/vaner.list
+
+sudo apt update
+sudo apt install vaner-desktop-linux</code></pre>
+
+  <p class="hint">Release key fingerprint:
+    <code>506B8FA959917D530E5EE7203D219B47A7E4F046</code>
+  </p>
+  <p class="hint">Source: <a href="https://github.com/Borgels/vaner-desktop-linux">github.com/Borgels/vaner-desktop-linux</a>
+    · Docs: <a href="https://docs.vaner.ai/docs/desktop">docs.vaner.ai/docs/desktop</a></p>
 </body>
 </html>
