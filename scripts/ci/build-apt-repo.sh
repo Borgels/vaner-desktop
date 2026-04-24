@@ -40,23 +40,15 @@ shift
 
 command -v reprepro >/dev/null || { echo "reprepro missing; sudo apt install reprepro" >&2; exit 2; }
 
-# Isolated GNUPGHOME.
+# Isolated GNUPGHOME. Loopback pinentry so loose gpg calls (not
+# reprepro's own signing, which we skip — see below) can accept a
+# passphrase from the command line.
 gnupghome=$(mktemp -d); chmod 700 "$gnupghome"
 trap 'rm -rf "$gnupghome"' EXIT
 export GNUPGHOME="$gnupghome"
+echo "allow-loopback-pinentry" > "$gnupghome/gpg-agent.conf"
+echo "pinentry-mode loopback"  > "$gnupghome/gpg.conf"
 echo "$VANER_RELEASE_GPG_PRIVKEY" | base64 -d | gpg --batch --import
-
-# The passphrase needs to be queryable by reprepro through gpg-agent
-# in loopback mode.
-gpg-connect-agent "updatestartuptty /bye" >/dev/null 2>&1 || true
-cat > "$gnupghome/gpg-agent.conf" <<'EOF'
-allow-loopback-pinentry
-EOF
-cat > "$gnupghome/gpg.conf" <<'EOF'
-use-agent
-pinentry-mode loopback
-EOF
-gpgconf --kill gpg-agent >/dev/null 2>&1 || true
 
 imported_fpr=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr:/ {print $10; exit}')
 [[ "$imported_fpr" == "${VANER_RELEASE_GPG_FINGERPRINT//[[:space:]]/}" ]] \
@@ -65,8 +57,13 @@ imported_fpr=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr:/ {print $1
 mkdir -p "$repo_root/conf"
 
 # `conf/distributions` — describes the `stable` dist. One component
-# (`main`), one arch (`amd64`) for v0.1; ARM64/Debian-testing can be
-# added by appending another stanza later.
+# (`main`), one arch (`amd64`) for v0.1; ARM64 / Debian-testing stanzas
+# can be appended later. SignWith is deliberately omitted — reprepro's
+# gpgme integration can't easily pick up the passphrase from an
+# ephemeral gpg-agent, and wrangling gpg-preset-passphrase in CI is
+# fragile. Instead we let reprepro produce an unsigned Release, then
+# sign it below with plain `gpg --clearsign / --detach-sign` against
+# the loopback-passphrase invocation, which is rock-solid.
 cat > "$repo_root/conf/distributions" <<EOF
 Origin: Vaner
 Label: Vaner Desktop Linux
@@ -74,7 +71,6 @@ Codename: stable
 Suite: stable
 Components: main
 Architectures: amd64
-SignWith: $imported_fpr
 DebIndices: Packages Release . .gz .bz2
 DscIndices: Sources Release . .gz .bz2
 Tracking: keep includechanges
@@ -84,24 +80,7 @@ EOF
 cat > "$repo_root/conf/options" <<EOF
 verbose
 basedir $repo_root
-ask-passphrase
 EOF
-
-# Feed the passphrase to gpg-agent so reprepro's signs succeed non-
-# interactively. gpg-preset-passphrase wants the keygrip of the
-# subkey used for signing.
-keygrip=$(gpg --with-keygrip --list-secret-keys "$imported_fpr" \
-          | awk '/Keygrip =/ {print $3}' | tail -1)
-/usr/lib/gnupg/gpg-preset-passphrase --preset \
-    --passphrase "$VANER_RELEASE_GPG_PASSPHRASE" "$keygrip" 2>/dev/null \
-  || /usr/libexec/gpg-preset-passphrase --preset \
-       --passphrase "$VANER_RELEASE_GPG_PASSPHRASE" "$keygrip" 2>/dev/null \
-  || {
-    # Fallback: pipe the passphrase via env file for reprepro's gpg calls.
-    export GPG_PASSPHRASE_FILE=$(mktemp)
-    echo "$VANER_RELEASE_GPG_PASSPHRASE" > "$GPG_PASSPHRASE_FILE"
-    chmod 600 "$GPG_PASSPHRASE_FILE"
-  }
 
 # Include each provided .deb. reprepro is idempotent on re-runs for
 # the same version; if we're re-releasing the same .deb it just no-
@@ -113,6 +92,23 @@ for d in "$@"; do
            --gnupghome "$gnupghome" \
            includedeb stable "$d"
 done
+
+# Sign the Release file for every distribution reprepro just wrote.
+# `Release.gpg` is the detached signature (older apt), `InRelease` is
+# the clearsigned variant (modern apt prefers this).
+echo "→ signing Release files under dists/"
+while IFS= read -r release; do
+  dist_dir=$(dirname "$release")
+  echo "   $release"
+  gpg --batch --yes --pinentry-mode loopback \
+      --passphrase "$VANER_RELEASE_GPG_PASSPHRASE" \
+      --local-user "$imported_fpr" \
+      --armor --detach-sign --output "$dist_dir/Release.gpg" "$release"
+  gpg --batch --yes --pinentry-mode loopback \
+      --passphrase "$VANER_RELEASE_GPG_PASSPHRASE" \
+      --local-user "$imported_fpr" \
+      --clearsign --output "$dist_dir/InRelease" "$release"
+done < <(find "$repo_root/dists" -maxdepth 3 -type f -name "Release")
 
 # Copy the public key to the repo root so users can fetch it from a
 # predictable URL without navigating GitHub.
