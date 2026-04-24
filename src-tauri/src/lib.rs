@@ -15,6 +15,7 @@
 //! The public entry is [`run`], called from `main.rs`.
 
 use std::sync::Arc;
+use tauri::Manager;
 use tokio::sync::Mutex;
 
 use vaner_contract::HttpEngineClient;
