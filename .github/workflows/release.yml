@@ -108,6 +108,42 @@ jobs:
           chmod +x scripts/ci/verify-artifacts.sh
           ./scripts/ci/verify-artifacts.sh "${{ steps.collect.outputs.bundle_root }}"
 
+      # Tauri v2 writes a <bundle>.sig per AppImage but leaves latest.json
+      # assembly to the release workflow. Compose it from the .sig content
+      # so tauri-plugin-updater can verify offline.
+      - name: compose latest.json updater manifest
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        id: manifest
+        run: |
+          set -euo pipefail
+          sig_path=$(find "${{ steps.collect.outputs.bundle_root }}/appimage" \
+                     -maxdepth 1 -name "*.AppImage.sig" -print -quit)
+          if [[ -z "$sig_path" ]]; then
+            echo "::error::Tauri did not produce an AppImage .sig — check TAURI_SIGNING_PRIVATE_KEY"
+            exit 1
+          fi
+          sig_content=$(tr -d '\n' < "$sig_path")
+          app_name=$(basename "${{ steps.collect.outputs.app_path }}")
+          version="${GITHUB_REF_NAME#v}"
+          pub_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${app_name}"
+          out="${{ steps.collect.outputs.bundle_root }}/latest.json"
+          python3 -c "
+          import json, sys
+          print(json.dumps({
+              'version': '${version}',
+              'pub_date': '${pub_date}',
+              'notes': 'See the v${version} release notes at https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}',
+              'platforms': {
+                  'linux-x86_64': {
+                      'signature': '''${sig_content}''',
+                      'url': '${url}'
+                  }
+              }
+          }, indent=2))" > "$out"
+          echo "latest_json_path=$out" >> "$GITHUB_OUTPUT"
+          cat "$out"
+
       - name: publish GitHub Release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2
@@ -119,7 +155,7 @@ jobs:
             ${{ steps.collect.outputs.app_path }}.asc
             ${{ steps.collect.outputs.bundle_root }}/SHA256SUMS
             ${{ steps.collect.outputs.bundle_root }}/SHA256SUMS.asc
-            ${{ steps.collect.outputs.latest_json }}
+            ${{ steps.manifest.outputs.latest_json_path }}
             scripts/release-key.asc
           generate_release_notes: true
           fail_on_unmatched_files: true

@@ -50,6 +50,8 @@
     "longDescription": "Menu-bar / tray desktop companion for the Vaner daemon. Watches in-flight predictions over SSE and adopts prepared packages into your running AI agent.",
     "linux": {
       "deb": {
+        "section": "devel",
+        "priority": "optional",
         "depends": [
           "libwebkit2gtk-4.1-0",
           "libgtk-3-0",
