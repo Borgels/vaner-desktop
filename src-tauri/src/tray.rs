@@ -41,7 +41,7 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             )
         })?)
         .menu(&menu)
-        .menu_on_left_click(true)
+        .show_menu_on_left_click(true)
         .tooltip("Vaner")
         .on_menu_event(|app, event| match event.id.as_ref() {
             ID_OPEN => {
