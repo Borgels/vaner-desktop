@@ -78,14 +78,15 @@ if [[ "$MODE" == "apt" ]]; then
   echo "→ registering apt-signed keyring + source list …"
   sudo install -d -m 0755 /etc/apt/keyrings
   gpg --dearmor < "$work/release-key.asc" | sudo tee /etc/apt/keyrings/vaner.gpg >/dev/null
-  echo "deb [signed-by=/etc/apt/keyrings/vaner.gpg] ${APT_ORIGIN} stable main" \
+  # `arch=amd64` so apt doesn't fetch i386 indexes (the repo is amd64-only).
+  echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/vaner.gpg] ${APT_ORIGIN} stable main" \
     | sudo tee /etc/apt/sources.list.d/vaner.list >/dev/null
 
   echo "→ apt update …"
   sudo apt update
 
-  echo "→ apt install vaner-desktop-linux …"
-  sudo apt install -y vaner-desktop-linux
+  echo "→ apt install vaner …"
+  sudo apt install -y vaner
 
   echo
   echo "Installed via apt. Future releases arrive through \`apt upgrade\`."
