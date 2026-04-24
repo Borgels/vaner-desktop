@@ -85,10 +85,16 @@
   custom domain via CNAME).
 
 ### Deferred to 0.1.1
-- Custom-domain apt host (`apt.vaner.ai`) — infrastructure-ready
-  but DNS not wired yet.
 - Preferences window content.
 - Signed updater delta diffs (full-bundle replacement for now).
+
+### Changed
+- Apt repository is published at `https://apt.vaner.ai` (custom
+  domain on the gh-pages branch via `CNAME`). Install URLs in
+  `scripts/install.sh`, README, RELEASE_KEY_SETUP, and the Vaner
+  docs site all point at the new host. The fallback
+  `https://borgels.github.io/vaner-desktop-linux` stays valid via
+  the GitHub-managed rewrite.
 
 
 

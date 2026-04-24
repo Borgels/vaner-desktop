@@ -25,7 +25,7 @@ Three paths, all signed — pick whichever fits your workflow:
 ### 1. Apt repository (recommended — auto-upgrades via `apt upgrade`)
 
 The installer adds a signed apt repo at
-`https://borgels.github.io/vaner-desktop-linux` and installs
+`https://apt.vaner.ai` and installs
 `vaner-desktop-linux` normally. Every future release arrives through
 `apt upgrade` without you running anything else.
 
@@ -36,9 +36,9 @@ curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop-linux/main/sc
 Prefer the plain-apt form (identical result, no pipe-to-bash):
 
 ```bash
-curl -fsSL https://borgels.github.io/vaner-desktop-linux/release-key.asc \
+curl -fsSL https://apt.vaner.ai/release-key.asc \
   | sudo gpg --dearmor -o /etc/apt/keyrings/vaner.gpg
-echo "deb [signed-by=/etc/apt/keyrings/vaner.gpg] https://borgels.github.io/vaner-desktop-linux stable main" \
+echo "deb [signed-by=/etc/apt/keyrings/vaner.gpg] https://apt.vaner.ai stable main" \
   | sudo tee /etc/apt/sources.list.d/vaner.list
 sudo apt update && sudo apt install vaner-desktop-linux
 ```

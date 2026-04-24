@@ -39,7 +39,7 @@ VANER_RELEASE_FPR="506B8FA959917D530E5EE7203D219B47A7E4F046"
 REPO="Borgels/vaner-desktop-linux"
 VERSION="${VANER_DESKTOP_VERSION:-latest}"
 MODE="${VANER_MODE:-apt}"  # apt (default) or deb (one-off)
-APT_ORIGIN="https://borgels.github.io/vaner-desktop-linux"
+APT_ORIGIN="https://apt.vaner.ai"
 PUBKEY_URL_DIRECT="https://raw.githubusercontent.com/${REPO}/main/scripts/release-key.asc"
 PUBKEY_URL_APT="${APT_ORIGIN}/release-key.asc"
 

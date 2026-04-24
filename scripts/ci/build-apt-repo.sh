@@ -9,16 +9,16 @@
 #   3. Pushes the staging dir back to `gh-pages`.
 #
 # GitHub Pages serves the resulting tree at
-#   https://borgels.github.io/vaner-desktop-linux/
+#   https://apt.vaner.ai/
 # (or the custom domain the user configures via a CNAME file at the
 # repo root).
 #
 # Users then install with:
 #
-#   curl -fsSL https://borgels.github.io/vaner-desktop-linux/release-key.asc \
+#   curl -fsSL https://apt.vaner.ai/release-key.asc \
 #       | sudo gpg --dearmor -o /etc/apt/keyrings/vaner.gpg
 #   echo "deb [signed-by=/etc/apt/keyrings/vaner.gpg] \
-#        https://borgels.github.io/vaner-desktop-linux stable main" \
+#        https://apt.vaner.ai stable main" \
 #       | sudo tee /etc/apt/sources.list.d/vaner.list
 #   sudo apt update && sudo apt install vaner-desktop-linux
 #
@@ -119,6 +119,13 @@ done
 cp "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/release-key.asc" \
    "$repo_root/release-key.asc"
 
+# CNAME file so GitHub Pages serves from apt.vaner.ai instead of
+# borgels.github.io. Needs a matching CNAME DNS record:
+#   apt  CNAME  borgels.github.io.
+# and Repo Settings → Pages → Custom domain set to apt.vaner.ai.
+# Regenerated on every release so a hand-rm'd CNAME can't persist.
+echo "apt.vaner.ai" > "$repo_root/CNAME"
+
 # Drop a little human-friendly index.html so browsers visiting the
 # root see what they're looking at.
 cat > "$repo_root/index.html" <<'EOF'
@@ -142,10 +149,10 @@ cat > "$repo_root/index.html" <<'EOF'
   <h1>vaner<span class="accent">_</span> · apt repository</h1>
   <p>Signed <code>.deb</code> packages for the Vaner Linux desktop companion.</p>
 
-  <pre><code>curl -fsSL https://borgels.github.io/vaner-desktop-linux/release-key.asc \
+  <pre><code>curl -fsSL https://apt.vaner.ai/release-key.asc \
   | sudo gpg --dearmor -o /etc/apt/keyrings/vaner.gpg
 
-echo "deb [signed-by=/etc/apt/keyrings/vaner.gpg] https://borgels.github.io/vaner-desktop-linux stable main" \
+echo "deb [signed-by=/etc/apt/keyrings/vaner.gpg] https://apt.vaner.ai stable main" \
   | sudo tee /etc/apt/sources.list.d/vaner.list
 
 sudo apt update
