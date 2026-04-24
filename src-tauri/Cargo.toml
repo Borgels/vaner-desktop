@@ -1,0 +1,31 @@
+[package]
+name = "vaner-linux"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Linux desktop companion for the Vaner predictive-context engine."
+license = "Apache-2.0"
+repository = "https://github.com/Borgels/vaner-linux"
+
+[lib]
+# Tauri v2 exposes the app as both a library (so mobile targets can
+# wrap it) and a binary. The library carries the actual `run()`.
+name = "vaner_linux_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+async-trait = "0.1"
+
+# Shared contract layer. Pinned to the feat/vaner-contract-crate tag
+# until L1 lands on main; swap to `tag = "v0.8.x"` then.
+vaner-contract = { git = "https://github.com/Borgels/Vaner.git", branch = "feat/vaner-contract-crate", features = ["http", "sse"] }

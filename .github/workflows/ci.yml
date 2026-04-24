@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+        with:
+          persist-credentials: false
+
+      - name: install system deps for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      # TODO(security): SHA-pin these actions before we ship.
+      # Current tag-pinning matches the v0 scaffold convention — enough
+      # to prove the architecture works end-to-end.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: corepack enable && corepack prepare pnpm@latest --activate
+      - run: pnpm install --frozen-lockfile=false
+
+      - name: svelte-check
+        run: pnpm check
+
+      - name: svelte build (static adapter)
+        run: pnpm build
+
+      - name: cargo fmt
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check --all-targets

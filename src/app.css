@@ -1,0 +1,29 @@
+/* Global styles for the Tauri WebView shell. The design tokens live
+   in `$lib/tokens.css` — imported below so every component can use
+   `var(--vd-*)` without importing the tokens file itself. */
+
+@import "./lib/tokens.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--vd-bg-0);
+  color: var(--vd-fg-1);
+  font-family: var(--vd-font-text);
+  font-size: var(--vd-t-body);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* Popover-style window: no scrollbar chrome, borderless. */
+body {
+  overflow: hidden;
+}

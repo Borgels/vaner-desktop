@@ -1,0 +1,76 @@
+/* Vaner Desktop — shared tokens
+   Vendored from Vaner/ui/cockpit/src/styles/tokens.css so the SvelteKit
+   Linux app, the SwiftUI macOS app, and the React cockpit all render
+   the same visual language. If you edit this file, sync upstream
+   and re-vendor.
+
+   Canonical source: /home/abo/Downloads/Vaner Control (2)/handoff/vaner-desktop/desktop/tokens.css
+*/
+
+:root {
+  /* Typography */
+  --vd-font: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --vd-font-text: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --vd-font-editorial: "Instrument Serif", "New York", "Times New Roman", serif;
+  --vd-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Menlo", monospace;
+  --vd-font-term: "Share Tech Mono", ui-monospace, "SF Mono", monospace;
+
+  /* Type scale */
+  --vd-t-hero: 22px;
+  --vd-t-title: 15px;
+  --vd-t-body: 13px;
+  --vd-t-label: 11px;
+  --vd-t-mini: 10px;
+
+  /* Brand palette */
+  --vd-purple: #b299d1;
+  --vd-purple-deep: #6d4f9a;
+  --vd-amber: #e0a557;
+  --vd-amber-deep: #b27a2e;
+
+  /* State palette (oklch where supported, hex fallback baked in) */
+  --vd-st-on: oklch(0.78 0.09 150);
+  --vd-st-learning: var(--vd-purple);
+  --vd-st-prepared: var(--vd-amber);
+  --vd-st-active: #6fbff4;
+  --vd-st-attention: #ef6a5a;
+  --vd-st-idle: oklch(0.6 0.01 90);
+
+  /* Dark mode surfaces (default) */
+  --vd-bg-0: #1c1a1f;
+  --vd-bg-1: #242127;
+  --vd-bg-2: #2c2930;
+  --vd-line: rgba(255, 255, 255, 0.08);
+  --vd-hair: rgba(255, 255, 255, 0.05);
+  --vd-fg-1: #f2eee6;
+  --vd-fg-2: rgba(242, 238, 230, 0.72);
+  --vd-fg-3: rgba(242, 238, 230, 0.52);
+  --vd-fg-4: rgba(242, 238, 230, 0.36);
+
+  /* Radii */
+  --vd-r-pop: 14px;
+  --vd-r-card: 10px;
+  --vd-r-chip: 6px;
+
+  /* Shadow */
+  --vd-shadow-pop:
+    0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 10px 40px rgba(0, 0, 0, 0.35),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
+}
+
+.vd-light {
+  --vd-bg-0: #faf7f1;
+  --vd-bg-1: #ffffff;
+  --vd-bg-2: #f2ede3;
+  --vd-line: rgba(0, 0, 0, 0.08);
+  --vd-hair: rgba(0, 0, 0, 0.05);
+  --vd-fg-1: #1a1720;
+  --vd-fg-2: rgba(26, 23, 32, 0.68);
+  --vd-fg-3: rgba(26, 23, 32, 0.48);
+  --vd-fg-4: rgba(26, 23, 32, 0.32);
+  --vd-purple: var(--vd-purple-deep);
+  --vd-amber: var(--vd-amber-deep);
+  --vd-shadow-pop:
+    0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 10px 30px rgba(0, 0, 0, 0.12),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.8);
+}
