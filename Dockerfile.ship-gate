@@ -22,7 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       curl \
       gnupg \
       jq \
-      dpkg-sig \
       python3 \
       python3-pip \
       python3-venv \
@@ -34,6 +33,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       dbus \
       dbus-x11 \
     && rm -rf /var/lib/apt/lists/*
+
+# dpkg-sig is legacy (not in Ubuntu 24.04 main). The ship-gate's
+# primary verification is the detached .deb.asc signature via plain
+# `gpg --verify`; the extra dpkg-sig embedded-sig check is already
+# guarded by `command -v dpkg-sig` in scripts/ship-gate.sh, so its
+# absence is fine.
 
 # Make the runtime XDG paths predictable. Ship-gate checks land here.
 RUN useradd --create-home --shell /bin/bash vaner \
