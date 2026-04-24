@@ -1,20 +1,16 @@
 name: Release
 
-# Fires on semver tags. Manual dispatch is also allowed for dry-runs
-# but the workflow refuses to publish unless a matching tag exists.
+# Fires on semver tags. `workflow_dispatch` runs a dry-run (build +
+# sign + verify, no upload, no apt-repo push) for pipeline sanity
+# without cutting a real version.
 on:
   push:
     tags:
       - "v*.*.*"
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: "Skip the GitHub Release upload (build + sign + verify only)"
-        required: false
-        default: "true"
 
 permissions:
-  contents: write # publish releases
+  contents: write # publish releases + push to gh-pages
 
 concurrency:
   group: release-${{ github.ref }}
@@ -22,26 +18,28 @@ concurrency:
 
 jobs:
   release:
-    runs-on: ubuntu-22.04 # oldest supported glibc so the .deb runs on 22.04 and newer
-    timeout-minutes: 35
+    runs-on: ubuntu-22.04 # oldest supported glibc → .deb/.AppImage run on 22.04+
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
         with:
           persist-credentials: false
 
-      - name: refuse unsigned releases
+      - name: refuse unconfigured releases
         run: |
-          if grep -q "REPLACE_WITH_40_CHAR_FINGERPRINT" scripts/install.sh \
-             || ! grep -q "BEGIN PGP PUBLIC KEY BLOCK" scripts/release-key.asc \
-             || grep -q "Placeholder\." scripts/release-key.asc; then
-            echo "::error::scripts/install.sh still has the placeholder fingerprint"
-            echo "::error::or scripts/release-key.asc still has the placeholder body."
-            echo "::error::Complete docs/RELEASE_KEY_SETUP.md and commit the real key first."
-            exit 1
-          fi
+          set -e
+          fail() { echo "::error::$1"; exit 1; }
+          grep -q "REPLACE_WITH_40_CHAR_FINGERPRINT" scripts/install.sh \
+            && fail "scripts/install.sh still has the placeholder fingerprint."
+          ! grep -q "BEGIN PGP PUBLIC KEY BLOCK" scripts/release-key.asc \
+            && fail "scripts/release-key.asc is missing the PGP block."
+          grep -q "^# Placeholder\." scripts/release-key.asc \
+            && fail "scripts/release-key.asc still has the placeholder body."
+          grep -q "REPLACE_WITH_TAURI_UPDATER_PUBKEY" src-tauri/tauri.conf.json \
+            && fail "src-tauri/tauri.conf.json is missing the updater pubkey."
+          echo "all release-time placeholders resolved."
 
-      # Tauri prerequisites for the Linux build.
       - name: install system deps
         run: |
           sudo apt-get update
@@ -52,7 +50,8 @@ jobs:
             librsvg2-dev \
             patchelf \
             dpkg-sig \
-            gnupg
+            gnupg \
+            reprepro
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -67,40 +66,47 @@ jobs:
       - run: corepack enable && corepack prepare pnpm@latest --activate
       - run: pnpm install --no-frozen-lockfile
 
-      # Flip bundle.active on at build-time only — keeps CI fast for
-      # non-release runs by default.
       - name: enable bundle for this run
         run: |
           sed -i 's/"active": false,/"active": true,/' src-tauri/tauri.conf.json
           grep '"active":' src-tauri/tauri.conf.json
 
-      - name: build .deb via tauri-bundler
-        run: pnpm tauri build --bundles deb
+      - name: build .deb + .AppImage via tauri-bundler
+        env:
+          # Tauri CLI reads these to sign the updater manifest + produce latest.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --bundles deb,appimage
 
-      - name: collect artifact path
+      - name: collect artifact paths
         id: collect
         run: |
-          deb_path=$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name "*.deb" -print -quit)
-          if [[ -z "$deb_path" ]]; then
-            echo "::error::tauri-bundler produced no .deb"
-            exit 1
-          fi
+          set -e
+          bundle_root="src-tauri/target/release/bundle"
+          deb_path=$(find "$bundle_root/deb" -maxdepth 1 -name "*.deb" -print -quit)
+          app_path=$(find "$bundle_root/appimage" -maxdepth 1 -name "*.AppImage" -print -quit)
+          latest_json=$(find "$bundle_root" -maxdepth 3 -name "latest.json" -print -quit || true)
+          [[ -n "$deb_path" ]] || { echo "::error::tauri produced no .deb"; exit 1; }
+          [[ -n "$app_path" ]] || { echo "::error::tauri produced no .AppImage"; exit 1; }
+          echo "bundle_root=$bundle_root" >> "$GITHUB_OUTPUT"
           echo "deb_path=$deb_path" >> "$GITHUB_OUTPUT"
-          ls -la "$(dirname "$deb_path")"
+          echo "app_path=$app_path" >> "$GITHUB_OUTPUT"
+          echo "latest_json=${latest_json:-}" >> "$GITHUB_OUTPUT"
+          find "$bundle_root" -maxdepth 3 -type f | sort
 
-      - name: sign .deb + SHA256SUMS
+      - name: sign all bundles + SHA256SUMS
         env:
           VANER_RELEASE_GPG_PRIVKEY: ${{ secrets.VANER_RELEASE_GPG_PRIVKEY }}
           VANER_RELEASE_GPG_PASSPHRASE: ${{ secrets.VANER_RELEASE_GPG_PASSPHRASE }}
           VANER_RELEASE_GPG_FINGERPRINT: ${{ secrets.VANER_RELEASE_GPG_FINGERPRINT }}
         run: |
-          chmod +x scripts/ci/sign-deb.sh
-          ./scripts/ci/sign-deb.sh "${{ steps.collect.outputs.deb_path }}"
+          chmod +x scripts/ci/sign-artifacts.sh
+          ./scripts/ci/sign-artifacts.sh "${{ steps.collect.outputs.bundle_root }}"
 
-      - name: verify signatures locally before upload
+      - name: verify signatures before any upload
         run: |
-          chmod +x scripts/ci/verify-deb.sh
-          ./scripts/ci/verify-deb.sh "${{ steps.collect.outputs.deb_path }}"
+          chmod +x scripts/ci/verify-artifacts.sh
+          ./scripts/ci/verify-artifacts.sh "${{ steps.collect.outputs.bundle_root }}"
 
       - name: publish GitHub Release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
@@ -109,15 +115,67 @@ jobs:
           files: |
             ${{ steps.collect.outputs.deb_path }}
             ${{ steps.collect.outputs.deb_path }}.asc
-            src-tauri/target/release/bundle/deb/SHA256SUMS
-            src-tauri/target/release/bundle/deb/SHA256SUMS.asc
+            ${{ steps.collect.outputs.app_path }}
+            ${{ steps.collect.outputs.app_path }}.asc
+            ${{ steps.collect.outputs.bundle_root }}/SHA256SUMS
+            ${{ steps.collect.outputs.bundle_root }}/SHA256SUMS.asc
+            ${{ steps.collect.outputs.latest_json }}
             scripts/release-key.asc
           generate_release_notes: true
           fail_on_unmatched_files: true
 
+      # ----- apt repo publish (gh-pages) --------------------------------
+      - name: checkout gh-pages
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+          persist-credentials: true
+        continue-on-error: true # first-run: branch may not exist yet
+
+      - name: initialize gh-pages if absent
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if [[ ! -d gh-pages/.git ]]; then
+            mkdir -p gh-pages
+            cd gh-pages
+            git init -q
+            git checkout -q -b gh-pages
+            git remote add origin "https://${GITHUB_ACTOR}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          fi
+          cd gh-pages
+          git config user.email "release@vaner.ai"
+          git config user.name  "Vaner release"
+
+      - name: add .nojekyll + refresh apt repo
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          VANER_RELEASE_GPG_PRIVKEY: ${{ secrets.VANER_RELEASE_GPG_PRIVKEY }}
+          VANER_RELEASE_GPG_PASSPHRASE: ${{ secrets.VANER_RELEASE_GPG_PASSPHRASE }}
+          VANER_RELEASE_GPG_FINGERPRINT: ${{ secrets.VANER_RELEASE_GPG_FINGERPRINT }}
+        run: |
+          chmod +x scripts/ci/build-apt-repo.sh
+          # .nojekyll so GH Pages serves directories verbatim
+          # (dists/, pool/ have leading dots GH Pages would mangle).
+          touch gh-pages/.nojekyll
+          ./scripts/ci/build-apt-repo.sh gh-pages "${{ steps.collect.outputs.deb_path }}"
+
+      - name: commit + push gh-pages
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cd gh-pages
+          git add -A
+          if git diff --cached --quiet; then
+            echo "gh-pages up to date — nothing to commit."
+          else
+            git commit -m "release: ${GITHUB_REF_NAME}"
+            git push origin gh-pages
+          fi
+
       - name: dry-run notice
         if: github.event_name == 'workflow_dispatch'
         run: |
-          echo "Dry run — artifacts built + signed + verified, but no GitHub Release was created."
-          echo "deb:       ${{ steps.collect.outputs.deb_path }}"
-          ls -la "$(dirname '${{ steps.collect.outputs.deb_path }}')"
+          echo "::notice::Dry run complete — artifacts built + signed + verified."
+          echo "Skipped: GitHub Release upload, apt-repo publish."
+          ls -la "${{ steps.collect.outputs.bundle_root }}"

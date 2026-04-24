@@ -58,11 +58,37 @@
   with `vaner-desktop-macos`. GitHub redirects the old URL; internal
   references updated to the canonical name.
 
+### Added (scope extension — pre-v0.1.0, not v0.1.1)
+- **`.AppImage` bundle target.** Both `.deb` and `.AppImage` built,
+  GPG-signed (detached `.asc`) and listed in `SHA256SUMS.asc` on every
+  release.
+- **Tauri auto-updater (`tauri-plugin-updater`).** Background check
+  on app start emits `update:available` to the Svelte layer, which
+  renders a calm top banner (`UpdateBanner.svelte`) with Install/
+  Later actions and an inline progress bar. Updates verified against
+  a dedicated minisign key (separate trust domain from the GPG `.deb`
+  signing key) whose pubkey is embedded in `tauri.conf.json`.
+- **Signed apt repository via GitHub Pages.**
+  `scripts/ci/build-apt-repo.sh` runs `reprepro` against the release
+  GPG key to produce a Debian dists/pool structure; the release
+  workflow pushes the result to the `gh-pages` branch for GitHub
+  Pages to serve. Users install via a standard
+  `deb [signed-by=…] https://borgels.github.io/vaner-desktop-linux stable main`
+  line; `apt upgrade` pulls new releases automatically. Landing
+  page index.html + `.nojekyll` so Pages serves dotfile directories
+  verbatim.
+- `scripts/install.sh` default mode switched to `apt` (registers the
+  repo + `apt install`); `VANER_MODE=deb` keeps the one-off .deb
+  flow for ephemeral installs and CI.
+- `docs/RELEASE_KEY_SETUP.md` grew Part 2 (minisign updater key) +
+  Part 3 (GitHub Pages apt-repo setup + optional `apt.vaner.ai`
+  custom domain via CNAME).
+
 ### Deferred to 0.1.1
-- `.AppImage` bundle target.
-- Tauri auto-updater (`tauri-plugin-updater`).
-- Apt repository with signed `Release` index (`apt-repo.vaner.ai`).
+- Custom-domain apt host (`apt.vaner.ai`) — infrastructure-ready
+  but DNS not wired yet.
 - Preferences window content.
+- Signed updater delta diffs (full-bundle replacement for now).
 
 
 

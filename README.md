@@ -20,42 +20,82 @@ surfaces install guidance.
 
 ## Install
 
-Signed `.deb` verified against Vaner's release key. Pipe-to-shell is
-fine for this one because the script pins the fingerprint in its own
-source — if the uploaded pubkey ever gets swapped, the install
-aborts with a fingerprint-mismatch error.
+Three paths, all signed — pick whichever fits your workflow:
+
+### 1. Apt repository (recommended — auto-upgrades via `apt upgrade`)
+
+The installer adds a signed apt repo at
+`https://borgels.github.io/vaner-desktop-linux` and installs
+`vaner-desktop-linux` normally. Every future release arrives through
+`apt upgrade` without you running anything else.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop-linux/main/scripts/install.sh | bash
 ```
 
-Or, for the paranoid (recommended) — read the script first:
+Prefer the plain-apt form (identical result, no pipe-to-bash):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop-linux/main/scripts/install.sh \
-  -o install.sh
-less install.sh     # confirm the VANER_RELEASE_FPR pin against docs/RELEASE_KEY_SETUP.md
-bash install.sh
+curl -fsSL https://borgels.github.io/vaner-desktop-linux/release-key.asc \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/vaner.gpg
+echo "deb [signed-by=/etc/apt/keyrings/vaner.gpg] https://borgels.github.io/vaner-desktop-linux stable main" \
+  | sudo tee /etc/apt/sources.list.d/vaner.list
+sudo apt update && sudo apt install vaner-desktop-linux
 ```
 
-Manual verification path:
+### 2. One-off `.deb` (no apt-repo registration)
 
 ```bash
-# Grab the latest release + detached signature
+VANER_MODE=deb curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop-linux/main/scripts/install.sh | bash
+```
+
+Same fingerprint-pin + detached-sig verification as the apt path;
+subsequent releases don't auto-install unless you re-run.
+
+### 3. Manual GPG verify then `apt install`
+
+```bash
 VER=$(curl -fsSL https://api.github.com/repos/Borgels/vaner-desktop-linux/releases/latest | jq -r .tag_name)
 curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner_${VER#v}_amd64.deb
 curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner_${VER#v}_amd64.deb.asc
 curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/release-key.asc
 
-# Import + verify
 gpg --import release-key.asc
 gpg --verify vaner_${VER#v}_amd64.deb.asc vaner_${VER#v}_amd64.deb
 sudo apt install ./vaner_${VER#v}_amd64.deb
 ```
 
-The release pubkey fingerprint is pinned in [`scripts/install.sh`](scripts/install.sh);
-cross-check against [docs/RELEASE_KEY_SETUP.md](docs/RELEASE_KEY_SETUP.md)
-and `keys.openpgp.org`.
+The release key fingerprint is
+`506B8FA959917D530E5EE7203D219B47A7E4F046` — pinned in
+[`scripts/install.sh`](scripts/install.sh), published on
+[keys.openpgp.org](https://keys.openpgp.org/search?q=release@vaner.ai),
+and also available as `scripts/release-key.asc` on `main`.
+
+### 4. `.AppImage` (no apt, no install)
+
+Every release ships an `.AppImage` alongside the `.deb`. Download,
+verify, `chmod +x`, run:
+
+```bash
+VER=$(curl -fsSL https://api.github.com/repos/Borgels/vaner-desktop-linux/releases/latest | jq -r .tag_name)
+curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/Vaner_${VER#v}_amd64.AppImage
+curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/Vaner_${VER#v}_amd64.AppImage.asc
+curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/release-key.asc
+gpg --import release-key.asc
+gpg --verify Vaner_${VER#v}_amd64.AppImage.asc Vaner_${VER#v}_amd64.AppImage
+chmod +x Vaner_${VER#v}_amd64.AppImage
+./Vaner_${VER#v}_amd64.AppImage
+```
+
+## Updates
+
+The app checks for updates on every launch via
+[`tauri-plugin-updater`](https://v2.tauri.app/plugin/updater/); every
+update is signed with a separate minisign key whose public half is
+embedded in the app. A small banner appears in the popover when a
+new release is ready; click **Install** to download + verify +
+replace in place. The apt-repo path gets the same updates through
+your system's normal update flow — pick one, not both.
 
 ## Status
 

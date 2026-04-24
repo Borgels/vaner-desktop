@@ -12,6 +12,7 @@
 //!   on GNOME/Wayland without the AppIndicator extension.
 //! - [`tray`] — system-tray icon + menu.
 //! - [`popover`] — show / hide / toggle the borderless popover window.
+//! - [`updater`] — background update check via tauri-plugin-updater.
 //!
 //! The public entry is [`run`], called from `main.rs`.
 
@@ -26,6 +27,7 @@ pub mod popover;
 pub mod session;
 pub mod sse_task;
 pub mod tray;
+pub mod updater;
 
 /// Process-wide state. A single reqwest-backed HTTP client is shared
 /// across every `#[tauri::command]` so connection pooling works.
@@ -55,6 +57,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .setup(move |app| {
             // Kick off the SSE snapshot stream; the Svelte store
@@ -74,6 +77,13 @@ pub fn run() {
             // without extra setup, nudge the user now.
             session::first_run_nudge(app.handle());
 
+            // Background update check. Emits `update:available` when
+            // a new release is on GitHub and its minisign signature
+            // verifies against the pubkey in tauri.conf.json. Failure
+            // modes (no network, no update, bad signature) are all
+            // silent by design — the user didn't ask.
+            updater::spawn_check(app.handle().clone());
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -89,6 +99,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::active_predictions,
             commands::adopt_prediction,
+            updater::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -13,6 +13,7 @@
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-text",
     "dialog:default",
-    "positioner:default"
+    "positioner:default",
+    "updater:default"
   ]
 }
