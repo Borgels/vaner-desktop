@@ -9,7 +9,7 @@ etc.) is running.
 Tauri v2 + SvelteKit. Rust backend depends on the shared
 [`vaner-contract`](https://github.com/Borgels/Vaner/tree/main/crates/vaner-contract)
 crate from the Vaner monorepo; the SwiftUI macOS sibling
-([vaner-desktop](https://github.com/Borgels/vaner-desktop)) uses the
+([vaner-desktop](https://github.com/Borgels/vaner-desktop-macos)) uses the
 same conformance fixtures to stay in lock-step without sharing a
 runtime.
 

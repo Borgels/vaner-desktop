@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.85"
 description = "Linux desktop companion for the Vaner predictive-context engine."
 license = "Apache-2.0"
-repository = "https://github.com/Borgels/vaner-linux"
+repository = "https://github.com/Borgels/vaner-desktop-linux"
 
 [lib]
 # Tauri v2 exposes the app as both a library (so mobile targets can
