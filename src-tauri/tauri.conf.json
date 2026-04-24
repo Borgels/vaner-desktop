@@ -28,12 +28,23 @@
     ],
     "security": {
       "csp": null
+    },
+    "trayIcon": {
+      "id": "main",
+      "iconPath": "icons/tray.png",
+      "menuOnLeftClick": true,
+      "tooltip": "Vaner"
     }
   },
   "bundle": {
     "active": false,
     "targets": "deb",
-    "icon": [],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ],
     "category": "DeveloperTool",
     "shortDescription": "Linux companion for the Vaner predictive-context engine",
     "longDescription": "Menu-bar / tray desktop companion for the Vaner daemon. Watches in-flight predictions over SSE and adopts prepared packages into your running AI agent.",

@@ -12,6 +12,7 @@
     "core:window:allow-close",
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-text",
-    "dialog:default"
+    "dialog:default",
+    "positioner:default"
   ]
 }

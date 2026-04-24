@@ -10,19 +10,22 @@
 //!   the WebView.
 //! - [`session`] — XDG session / DE detection for first-run guidance
 //!   on GNOME/Wayland without the AppIndicator extension.
-//! - [`tray`] — system-tray setup (L5 — TODO).
+//! - [`tray`] — system-tray icon + menu.
+//! - [`popover`] — show / hide / toggle the borderless popover window.
 //!
 //! The public entry is [`run`], called from `main.rs`.
 
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Manager, WindowEvent};
 use tokio::sync::Mutex;
 
 use vaner_contract::HttpEngineClient;
 
 pub mod commands;
+pub mod popover;
 pub mod session;
 pub mod sse_task;
+pub mod tray;
 
 /// Process-wide state. A single reqwest-backed HTTP client is shared
 /// across every `#[tauri::command]` so connection pooling works.
@@ -51,6 +54,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_positioner::init())
         .manage(state)
         .setup(move |app| {
             // Kick off the SSE snapshot stream; the Svelte store
@@ -61,11 +65,26 @@ pub fn run() {
                 *app_state.sse_handle.lock().await = Some(handle);
             });
 
+            // Install the tray icon + menu ("Open Vaner" /
+            // Preferences / Pause / Quit). Menu shows on both left
+            // and right click per the documented UX contract.
+            tray::install(app.handle())?;
+
             // First-run guidance: if session+DE can't show tray icons
             // without extra setup, nudge the user now.
             session::first_run_nudge(app.handle());
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Menu-bar behaviour: hide the popover when it loses
+            // focus, matching NSPopover semantics. The Svelte layer
+            // can still re-show via invoke or tray click.
+            if window.label() == popover::WINDOW_LABEL
+                && matches!(event, WindowEvent::Focused(false))
+            {
+                let _ = popover::hide(window.app_handle());
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::active_predictions,

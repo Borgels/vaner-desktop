@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { predictions, startPredictionStream } from "$lib/stores/predictions.js";
+  import { showToast } from "$lib/stores/toast.js";
   import { isAdoptable } from "$lib/contract/types.js";
 
   onMount(() => {
@@ -10,9 +11,15 @@
 
   async function adopt(id: string) {
     try {
-      await invoke("adopt_prediction", { predictionId: id });
+      const intent = await invoke<string>("adopt_prediction", { predictionId: id });
+      showToast(
+        `Prediction adopted — ${intent}. Your agent's next prompt will use this package.`,
+        "success",
+        5000,
+      );
     } catch (err) {
-      console.error("[vaner] adopt failed:", err);
+      const msg = typeof err === "string" ? err : "Couldn't adopt that prediction.";
+      showToast(msg, "attention", 5000);
     }
   }
 </script>
