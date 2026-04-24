@@ -64,13 +64,13 @@ subsequent releases don't auto-install unless you re-run.
 
 ```bash
 VER=$(curl -fsSL https://api.github.com/repos/Borgels/vaner-desktop-linux/releases/latest | jq -r .tag_name)
-curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner_${VER#v}_amd64.deb
-curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner_${VER#v}_amd64.deb.asc
+curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner-desktop_${VER#v}_amd64.deb
+curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner-desktop_${VER#v}_amd64.deb.asc
 curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/release-key.asc
 
 gpg --import release-key.asc
-gpg --verify vaner_${VER#v}_amd64.deb.asc vaner_${VER#v}_amd64.deb
-sudo apt install ./vaner_${VER#v}_amd64.deb
+gpg --verify vaner-desktop_${VER#v}_amd64.deb.asc vaner-desktop_${VER#v}_amd64.deb
+sudo apt install ./vaner-desktop_${VER#v}_amd64.deb
 ```
 
 The release key fingerprint is
@@ -86,13 +86,13 @@ verify, `chmod +x`, run:
 
 ```bash
 VER=$(curl -fsSL https://api.github.com/repos/Borgels/vaner-desktop-linux/releases/latest | jq -r .tag_name)
-curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/Vaner_${VER#v}_amd64.AppImage
-curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/Vaner_${VER#v}_amd64.AppImage.asc
+curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner-desktop_${VER#v}_amd64.AppImage
+curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner-desktop_${VER#v}_amd64.AppImage.asc
 curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/release-key.asc
 gpg --import release-key.asc
-gpg --verify Vaner_${VER#v}_amd64.AppImage.asc Vaner_${VER#v}_amd64.AppImage
-chmod +x Vaner_${VER#v}_amd64.AppImage
-./Vaner_${VER#v}_amd64.AppImage
+gpg --verify vaner-desktop_${VER#v}_amd64.AppImage.asc vaner-desktop_${VER#v}_amd64.AppImage
+chmod +x vaner-desktop_${VER#v}_amd64.AppImage
+./vaner-desktop_${VER#v}_amd64.AppImage
 ```
 
 ## Updates

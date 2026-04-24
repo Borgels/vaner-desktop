@@ -83,11 +83,29 @@ jobs:
         run: |
           set -e
           bundle_root="src-tauri/target/release/bundle"
-          deb_path=$(find "$bundle_root/deb" -maxdepth 1 -name "*.deb" -print -quit)
-          app_path=$(find "$bundle_root/appimage" -maxdepth 1 -name "*.AppImage" -print -quit)
+          raw_deb=$(find "$bundle_root/deb" -maxdepth 1 -name "*.deb" -print -quit)
+          raw_app=$(find "$bundle_root/appimage" -maxdepth 1 -name "*.AppImage" -print -quit)
+          [[ -n "$raw_deb" ]] || { echo "::error::tauri produced no .deb"; exit 1; }
+          [[ -n "$raw_app" ]] || { echo "::error::tauri produced no .AppImage"; exit 1; }
+
+          # tauri-bundler names artifacts after productName ("Vaner Desktop"),
+          # so the file names contain a space. Rename to a hyphenated lowercase
+          # convention up front: dpkg-sig word-splits its arguments, apt URLs
+          # need to be predictable, and the updater manifest embeds the file
+          # name into latest.json. The .deb's internal `Package:` name (which
+          # `apt install` uses) is unaffected.
+          version=$(jq -r .version src-tauri/tauri.conf.json)
+          deb_path="$bundle_root/deb/vaner-desktop_${version}_amd64.deb"
+          app_path="$bundle_root/appimage/vaner-desktop_${version}_amd64.AppImage"
+          [[ "$raw_deb" != "$deb_path" ]] && mv -- "$raw_deb" "$deb_path"
+          [[ "$raw_app" != "$app_path" ]] && mv -- "$raw_app" "$app_path"
+          # Tauri emits a sidecar .AppImage.sig — follow the rename.
+          raw_sig=$(find "$bundle_root/appimage" -maxdepth 1 -name "*.AppImage.sig" -print -quit || true)
+          if [[ -n "$raw_sig" && "$raw_sig" != "$app_path.sig" ]]; then
+            mv -- "$raw_sig" "$app_path.sig"
+          fi
+
           latest_json=$(find "$bundle_root" -maxdepth 3 -name "latest.json" -print -quit || true)
-          [[ -n "$deb_path" ]] || { echo "::error::tauri produced no .deb"; exit 1; }
-          [[ -n "$app_path" ]] || { echo "::error::tauri produced no .AppImage"; exit 1; }
           echo "bundle_root=$bundle_root" >> "$GITHUB_OUTPUT"
           echo "deb_path=$deb_path" >> "$GITHUB_OUTPUT"
           echo "app_path=$app_path" >> "$GITHUB_OUTPUT"
