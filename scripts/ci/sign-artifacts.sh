@@ -65,9 +65,9 @@ if ((${#debs[@]})); then
   command -v dpkg-sig >/dev/null || { echo "dpkg-sig missing; apt install dpkg-sig" >&2; exit 5; }
   for d in "${debs[@]}"; do
     echo "→ signing .deb (embedded + detached): $d"
-    dpkg-sig --gpg-options "--pinentry-mode loopback --passphrase $VANER_RELEASE_GPG_PASSPHRASE" \
+    dpkg-sig -k "$imported_fpr" \
+             --gpg-options "--pinentry-mode loopback --passphrase $VANER_RELEASE_GPG_PASSPHRASE" \
              --sign builder \
-             --sign-key "$imported_fpr" \
              "$d"
     gpg_sign "$d"
   done
