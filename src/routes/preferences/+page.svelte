@@ -2,7 +2,10 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import MCPClientsPanel from "./MCPClientsPanel.svelte";
+  import EnginePanel from "./EnginePanel.svelte";
+  import TelemetryPanel from "./TelemetryPanel.svelte";
   import { rescan } from "$lib/stores/clients.js";
+  import { loadStatus } from "$lib/stores/setup.js";
 
   type Tab = "clients" | "engine" | "telemetry";
 
@@ -11,6 +14,9 @@
   onMount(() => {
     // Trigger an initial detection scan when the route opens.
     rescan();
+    // Pre-load setup status so the Engine + Telemetry tabs render
+    // instantly if the user clicks them.
+    void loadStatus();
   });
 
   function close() {
@@ -42,8 +48,6 @@
       class:active={activeTab === "engine"}
       type="button"
       on:click={() => (activeTab = "engine")}
-      title="Engine settings — coming in 0.8.6"
-      disabled
     >
       Engine
     </button>
@@ -53,8 +57,6 @@
       class:active={activeTab === "telemetry"}
       type="button"
       on:click={() => (activeTab = "telemetry")}
-      title="Telemetry settings — coming in 0.8.6"
-      disabled
     >
       Telemetry
     </button>
@@ -63,6 +65,10 @@
   <section class="prefs-body">
     {#if activeTab === "clients"}
       <MCPClientsPanel />
+    {:else if activeTab === "engine"}
+      <EnginePanel />
+    {:else if activeTab === "telemetry"}
+      <TelemetryPanel />
     {/if}
   </section>
 </div>
