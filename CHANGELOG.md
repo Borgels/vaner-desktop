@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- **Vaner 0.8.5 contract sync** (`src/lib/contract/types.ts`) — optional `readiness_label`, `eta_bucket`, `eta_bucket_label`, `adoptable`, `rank`, `ui_summary`, `suppression_reason`, `source_label` on `PredictedPrompt`, plus the `EtaBucket` type alias. Pre-0.8.5 daemons keep working — every new field is optional. Mirrors the additive changes in `vaner-contract` v0.2.0.
+- **`src/lib/contract/card.ts`** — display helpers (`etaBucketLabel`, `readinessLabel`, `cardIsAdoptable`) that prefer server-supplied strings and fall back to canonical enum→label maps. Pinned glyphs (en-dash in `~10–20s`) match the daemon's `vaner.intent.readiness` source of truth and the Rust conformance fixtures.
+
 ## [0.1.0] - 2026-04-24
 
 Initial release of the Vaner Linux desktop companion.
