@@ -1,6 +1,6 @@
 {
-  "name": "vaner-linux",
-  "version": "0.1.0",
+  "name": "vaner-desktop",
+  "version": "0.1.1",
   "private": true,
   "description": "Linux desktop companion for the Vaner predictive-context engine (Tauri v2 + SvelteKit).",
   "type": "module",

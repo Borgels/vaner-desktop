@@ -3,5 +3,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    vaner_linux_lib::run();
+    vaner_desktop_lib::run();
 }

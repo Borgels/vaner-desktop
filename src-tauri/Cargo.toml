@@ -1,6 +1,6 @@
 [package]
-name = "vaner-linux"
-version = "0.1.0"
+name = "vaner-desktop"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
 description = "Linux desktop companion for the Vaner predictive-context engine."
@@ -10,7 +10,7 @@ repository = "https://github.com/Borgels/vaner-desktop-linux"
 [lib]
 # Tauri v2 exposes the app as both a library (so mobile targets can
 # wrap it) and a binary. The library carries the actual `run()`.
-name = "vaner_linux_lib"
+name = "vaner_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

@@ -1,4 +1,4 @@
-# vaner-linux
+# vaner-desktop-linux
 
 Linux desktop companion for [Vaner](https://github.com/Borgels/Vaner) —
 the predictive-context engine. Menu-bar / tray app that watches the

@@ -27,7 +27,7 @@ pub fn spawn_check<R: Runtime>(app: AppHandle<R>) {
         if let Err(e) = check(app).await {
             // Log at stderr; operators grepping daemon logs will see
             // this, end users won't be bothered.
-            eprintln!("[vaner-linux] updater check failed: {e}");
+            eprintln!("[vaner-desktop] updater check failed: {e}");
         }
     });
 }

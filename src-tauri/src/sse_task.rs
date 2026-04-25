@@ -18,7 +18,7 @@ pub fn spawn(app: AppHandle, engine: Arc<HttpEngineClient>) -> tokio::task::Join
 
         while let Some(snapshot) = rx.recv().await {
             if let Err(e) = app.emit("predictions:snapshot", snapshot) {
-                eprintln!("[vaner-linux] emit predictions:snapshot failed: {e}");
+                eprintln!("[vaner-desktop] emit predictions:snapshot failed: {e}");
                 break;
             }
         }

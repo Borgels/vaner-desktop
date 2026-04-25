@@ -2,9 +2,9 @@
 #
 # Vaner desktop installer.
 #
-# Default behaviour: adds the Vaner apt repository and installs
-# `vaner-desktop-linux` via apt so subsequent `apt upgrade` runs pull
-# new releases automatically. Falls back to a direct .deb download
+# Default behaviour: adds the Vaner apt repository and installs the
+# `vaner-desktop` package via apt so subsequent `apt upgrade` runs
+# pull new releases automatically. Falls back to a direct .deb download
 # (with detached-signature verification) if apt / sudo isn't
 # available or the user explicitly opts out.
 #
@@ -147,7 +147,7 @@ sudo apt install -y "$work/vaner.deb"
 
 echo
 echo "Vaner desktop installed. Launch it from your app menu, or:"
-echo "  vaner-desktop-linux   # once the binary is on your PATH"
+echo "  vaner-desktop   # once the binary is on your PATH"
 echo
 echo "The first-run popover on GNOME/Wayland may prompt you to install"
 echo "gnome-shell-extension-appindicator — that's expected."
