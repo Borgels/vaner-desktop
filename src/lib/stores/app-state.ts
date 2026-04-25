@@ -27,11 +27,12 @@ export async function bootstrapAppStateListeners(): Promise<void> {
     });
   });
 
-  await listen<void>("menu:open-preferences", () => {
-    // Preferences window wiring comes in a follow-up; for now we
-    // acknowledge the click so the user knows the menu item is
-    // reachable.
-    showToast("Preferences pane is coming soon.", "info", 4000);
+  await listen<void>("menu:open-preferences", async () => {
+    // 0.8.5 WS12: navigate to /preferences (lands on the MCP Clients
+    // tab). Loaded lazily so this store has no SvelteKit `goto`
+    // dependency at module-load time.
+    const { goto } = await import("$app/navigation");
+    void goto("/preferences");
   });
 
   await listen<void>("setup:appindicator-missing", () => {

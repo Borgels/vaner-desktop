@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- **Preferences route + MCP Clients panel** (`src/routes/preferences/`) — first preferences UI in the Linux app. Tray menu *Preferences…* now opens this route (lands on the Clients tab). Lists every detected MCP client (Cursor, Claude Desktop, Claude Code, Cline, Continue, Zed, Windsurf, VS Code, Codex CLI, Roo) with Install / Reinstall / Remove per row + *Install for all* + drift banner with one-click *Update All*. Backed by the new Vaner CLI `vaner clients` (0.8.5 WS12-A); idempotent and backup-safe.
+- **`clients` Tauri commands** (`src-tauri/src/clients.rs`) — first CLI shell-out from this app. New commands: `clients_detect`, `clients_install`, `clients_install_all`, `clients_uninstall`, `clients_doctor`. Each shells out to the bundled `vaner` binary (resolved via `$VANER_BIN` override or PATH) and parses the `--format json` output via serde.
+- **`src/lib/stores/clients.ts`** — Svelte store mirroring the predictions store shape; exposes `clients`, `rescan`, `install`, `installAll`, `uninstall`. Auto-fetches drift report on every rescan.
 - **Vaner 0.8.5 contract sync** (`src/lib/contract/types.ts`) — optional `readiness_label`, `eta_bucket`, `eta_bucket_label`, `adoptable`, `rank`, `ui_summary`, `suppression_reason`, `source_label` on `PredictedPrompt`, plus the `EtaBucket` type alias. Pre-0.8.5 daemons keep working — every new field is optional. Mirrors the additive changes in `vaner-contract` v0.2.0.
 - **`src/lib/contract/card.ts`** — display helpers (`etaBucketLabel`, `readinessLabel`, `cardIsAdoptable`) that prefer server-supplied strings and fall back to canonical enum→label maps. Pinned glyphs (en-dash in `~10–20s`) match the daemon's `vaner.intent.readiness` source of truth and the Rust conformance fixtures.
 

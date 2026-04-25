@@ -22,6 +22,7 @@ use tokio::sync::Mutex;
 
 use vaner_contract::HttpEngineClient;
 
+pub mod clients;
 pub mod commands;
 pub mod popover;
 pub mod session;
@@ -100,6 +101,11 @@ pub fn run() {
             commands::active_predictions,
             commands::adopt_prediction,
             updater::install_update,
+            clients::clients_detect,
+            clients::clients_install,
+            clients::clients_install_all,
+            clients::clients_uninstall,
+            clients::clients_doctor,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
