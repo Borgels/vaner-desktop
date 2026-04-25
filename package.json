@@ -9,7 +9,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "predev": "node scripts/regen-contract-bindings.mjs",
+    "prebuild": "node scripts/regen-contract-bindings.mjs"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.0",
