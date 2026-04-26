@@ -11,7 +11,10 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 use vaner_contract::{HttpEngineClient, PredictedPrompt, stream_prediction_events};
 
-pub fn spawn(app: AppHandle, engine: Arc<HttpEngineClient>) -> tauri::async_runtime::JoinHandle<()> {
+pub fn spawn(
+    app: AppHandle,
+    engine: Arc<HttpEngineClient>,
+) -> tauri::async_runtime::JoinHandle<()> {
     // tauri::async_runtime::spawn drives Tauri's managed Tokio runtime;
     // a bare tokio::spawn here panics because the Tauri setup callback
     // is not itself executing inside a Tokio reactor.
