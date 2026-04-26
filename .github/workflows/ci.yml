@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
@@ -61,3 +61,39 @@ jobs:
       - name: cargo check
         working-directory: src-tauri
         run: cargo check --all-targets
+
+  build-windows:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: corepack enable
+        shell: pwsh
+      - run: corepack prepare pnpm@latest --activate
+        shell: pwsh
+      - run: pnpm install --frozen-lockfile
+        shell: pwsh
+
+      - name: svelte build (static adapter)
+        run: pnpm build
+        shell: pwsh
+
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check --all-targets
+        shell: pwsh
