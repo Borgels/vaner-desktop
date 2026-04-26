@@ -9,14 +9,24 @@
 //!
 //! KDE (both X11 and Wayland) works out of the box — no nudge needed.
 
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
+#[cfg(target_os = "linux")]
+use tauri::Emitter;
 
+#[cfg(target_os = "linux")]
 pub fn first_run_nudge(app: &AppHandle) {
     if is_gnome_wayland_without_appindicator() {
         let _ = app.emit("setup:appindicator-missing", ());
     }
 }
 
+#[cfg(not(target_os = "linux"))]
+pub fn first_run_nudge(_app: &AppHandle) {
+    // GNOME-Wayland AppIndicator nudge is Linux-only. macOS / Windows
+    // ship a native tray and need no first-run guidance.
+}
+
+#[cfg(target_os = "linux")]
 fn is_gnome_wayland_without_appindicator() -> bool {
     let session_type = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
     let current_desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();

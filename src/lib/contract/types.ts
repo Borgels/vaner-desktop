@@ -24,6 +24,14 @@ export type Readiness =
   | "ready"
   | "stale";
 
+/** 0.8.5 WS6 — coarse ETA bucket for a prediction. */
+export type EtaBucket =
+  | "ready_now"
+  | "under_20s"
+  | "under_1m"
+  | "working"
+  | "maturing";
+
 export interface PredictionSpec {
   label: string;
   description: string | null;
@@ -59,6 +67,17 @@ export interface PredictedPrompt {
   spec: PredictionSpec;
   run: PredictionRun;
   artifacts: PredictionArtifacts;
+
+  // 0.8.5 WS9 — UI card-model derivations. Server-computed. Optional so
+  // pre-0.8.5 daemon responses continue to decode unchanged.
+  readiness_label?: string;
+  eta_bucket?: EtaBucket;
+  eta_bucket_label?: string;
+  adoptable?: boolean;
+  rank?: number;
+  ui_summary?: string;
+  suppression_reason?: string;
+  source_label?: string;
 }
 
 export function isAdoptable(r: Readiness): boolean {

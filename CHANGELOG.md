@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+### Changed (0.2.0 — cross-platform: Linux + Windows in one repo)
+- **Repo renamed `vaner-desktop-linux` → `vaner-desktop`.** GitHub
+  redirects keep old URLs working; the apt repo at `apt.vaner.ai`
+  is unaffected (CNAME survives the rename).
+- **Crate / package rename.** `vaner-linux` → `vaner-desktop` in
+  `Cargo.toml` and `package.json`; lib renamed to `vaner_desktop_lib`.
+  Built binary on Linux is now `vaner-desktop` (not `vaner-linux`).
+- **NSIS Windows bundle** target added to `tauri.conf.json` —
+  `pnpm tauri build --bundles nsis` produces a per-user `.exe`
+  installer. Windows 10 1809+ supported via WebView2.
+- **`vaner_cli` shared module** replaces the duplicated POSIX
+  `which vaner` shell-outs in `clients.rs` / `setup.rs`. Uses the
+  cross-platform `which` crate so `.exe` resolution works on Windows.
+- **`session.rs` AppIndicator nudge** is now `cfg`-gated to Linux —
+  no-op on Windows / macOS.
+- **Updater endpoint** points at the renamed repo's `latest.json`.
+
+### Added (0.8.6 WS-DESK-LINUX — Simple-Mode setup)
+- **`/setup` first-run wizard** (`src/routes/setup/+page.svelte`) — five-step Simple-Mode flow mirroring the macOS desktop. Welcome → work styles + priority → compute / cloud / background posture → recommendation review (with hardware-tier readout, "Why this bundle?" disclosure, runner-ups) → confirm + apply. Triggered by `setup.completed_at == null` from the root layout. Cloud-widening confirm dialog matches the macOS pattern: when `setup_apply` returns `widens_cloud_posture=true, written=false`, the wizard re-asks before re-calling with `confirm_cloud_widening=true`.
+- **Engine and Telemetry preferences tabs** (`src/routes/preferences/EnginePanel.svelte`, `TelemetryPanel.svelte`) — previously stubbed "coming in 0.8.6". Engine tab carries a Simple/Advanced segmented control backed by localStorage (`vaner.pref.setupMode`); Simple shows the user's answers + bundle summary + "Why this bundle?" reasons + a "Re-run setup wizard" button; Advanced lists every bundle-managed knob read-only with a hint to use `vaner setup advanced` for direct TOML edits. Telemetry tab renders the HardwareProfile, the in-flight prediction count by source + ETA bucket, and the active bundle's tuning knobs.
+- **Tauri `setup_*` commands** (`src-tauri/src/setup.rs`) — eight new commands: `setup_questions`, `setup_recommend`, `setup_apply`, `setup_status`, `policy_show`, `policy_refresh`, `hardware_profile`, `deep_run_defaults`. Each shells out to `vaner setup ... --json` (matches the 0.8.5 WS12-D `clients_*` pattern). `setup_apply` implements the cloud-widening pre-flight by pre-resolving the bundle id and comparing postures. `policy_refresh` and `deep_run_defaults` are best-effort / synthesised today and flip to HTTP probes when the engine 0.8.6 PR chain ships `POST /policy/refresh` and `GET /deep-run/defaults`.
+- **`src/lib/stores/setup.ts`** — Svelte store mirroring the `clients.ts` shape. Exposes `setup` (snapshot), `setupMode` (Simple/Advanced UI toggle, persisted to localStorage), `loadStatus`, `loadQuestions`, `recommend`, `apply`, `loadHardware`, `loadPolicy`, `refresh`, `loadDeepRunDefaults`.
+- **Hand-mirrored TypeScript types** (`src/lib/contract/setup-types.ts`) — `SetupAnswers`, `VanerPolicyBundle`, `SelectionResult`, `AppliedPolicy`, `HardwareProfile`, `SetupQuestion`, `SetupStatus`, `DeepRunDefaults`. Marked TODO until the `vaner-contract` ts-rs setup-type PR lands; the predev script's rsync excludes `setup-types.ts` so the hand-mirror survives a regen.
+- **`scripts/regen-contract-bindings.mjs`** + `predev` / `prebuild` package.json hooks — regenerates ts-rs bindings from the local Vaner workspace and rsyncs them into `src/lib/contract/`. Honours `VANER_REPO=<path>` (defaults to `../Vaner`); skips silently when cargo / rsync / the workspace are unavailable.
+- **First-run gating** (`src/routes/+layout.svelte`) — the GNOME app-indicator nudge in `FirstRunGuidance.svelte` now fires *after* the setup wizard completes, not before.
+
+### Added
+- **Preferences route + MCP Clients panel** (`src/routes/preferences/`) — first preferences UI in the Linux app. Tray menu *Preferences…* now opens this route (lands on the Clients tab). Lists every detected MCP client (Cursor, Claude Desktop, Claude Code, Cline, Continue, Zed, Windsurf, VS Code, Codex CLI, Roo) with Install / Reinstall / Remove per row + *Install for all* + drift banner with one-click *Update All*. Backed by the new Vaner CLI `vaner clients` (0.8.5 WS12-A); idempotent and backup-safe.
+- **`clients` Tauri commands** (`src-tauri/src/clients.rs`) — first CLI shell-out from this app. New commands: `clients_detect`, `clients_install`, `clients_install_all`, `clients_uninstall`, `clients_doctor`. Each shells out to the bundled `vaner` binary (resolved via `$VANER_BIN` override or PATH) and parses the `--format json` output via serde.
+- **`src/lib/stores/clients.ts`** — Svelte store mirroring the predictions store shape; exposes `clients`, `rescan`, `install`, `installAll`, `uninstall`. Auto-fetches drift report on every rescan.
+- **Vaner 0.8.5 contract sync** (`src/lib/contract/types.ts`) — optional `readiness_label`, `eta_bucket`, `eta_bucket_label`, `adoptable`, `rank`, `ui_summary`, `suppression_reason`, `source_label` on `PredictedPrompt`, plus the `EtaBucket` type alias. Pre-0.8.5 daemons keep working — every new field is optional. Mirrors the additive changes in `vaner-contract` v0.2.0.
+- **`src/lib/contract/card.ts`** — display helpers (`etaBucketLabel`, `readinessLabel`, `cardIsAdoptable`) that prefer server-supplied strings and fall back to canonical enum→label maps. Pinned glyphs (en-dash in `~10–20s`) match the daemon's `vaner.intent.readiness` source of truth and the Rust conformance fixtures.
+
 ## [0.1.0] - 2026-04-24
 
 Initial release of the Vaner Linux desktop companion.

@@ -22,12 +22,15 @@ use tokio::sync::Mutex;
 
 use vaner_contract::HttpEngineClient;
 
+pub mod clients;
 pub mod commands;
 pub mod popover;
 pub mod session;
+pub mod setup;
 pub mod sse_task;
 pub mod tray;
 pub mod updater;
+pub mod vaner_cli;
 
 /// Process-wide state. A single reqwest-backed HTTP client is shared
 /// across every `#[tauri::command]` so connection pooling works.
@@ -100,6 +103,19 @@ pub fn run() {
             commands::active_predictions,
             commands::adopt_prediction,
             updater::install_update,
+            clients::clients_detect,
+            clients::clients_install,
+            clients::clients_install_all,
+            clients::clients_uninstall,
+            clients::clients_doctor,
+            setup::setup_questions,
+            setup::setup_recommend,
+            setup::setup_apply,
+            setup::setup_status,
+            setup::policy_show,
+            setup::policy_refresh,
+            setup::hardware_profile,
+            setup::deep_run_defaults,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

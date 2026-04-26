@@ -2,14 +2,14 @@
 #
 # Vaner desktop installer.
 #
-# Default behaviour: adds the Vaner apt repository and installs the
-# `vaner-desktop` package via apt so subsequent `apt upgrade` runs
-# pull new releases automatically. Falls back to a direct .deb download
+# Default behaviour: adds the Vaner apt repository and installs
+# `vaner-desktop` via apt so subsequent `apt upgrade` runs pull
+# new releases automatically. Falls back to a direct .deb download
 # (with detached-signature verification) if apt / sudo isn't
 # available or the user explicitly opts out.
 #
 #   # recommended
-#   curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop-linux/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop/main/scripts/install.sh | bash
 #
 #   # one-off install, no apt-repo registration:
 #   VANER_MODE=deb curl -fsSL .../install.sh | bash
@@ -36,7 +36,7 @@ set -euo pipefail
 VANER_RELEASE_FPR="506B8FA959917D530E5EE7203D219B47A7E4F046"
 # --------------------------------------------------------------------
 
-REPO="Borgels/vaner-desktop-linux"
+REPO="Borgels/vaner-desktop"
 VERSION="${VANER_DESKTOP_VERSION:-latest}"
 MODE="${VANER_MODE:-apt}"  # apt (default) or deb (one-off)
 APT_ORIGIN="https://apt.vaner.ai"
