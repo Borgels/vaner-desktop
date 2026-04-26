@@ -230,14 +230,15 @@ jobs:
           bundle_root="artifacts/bundle"
           mkdir -p "$bundle_root/deb" "$bundle_root/appimage" "$bundle_root/nsis"
 
-          # The artifact-upload action flattens directories; downloads
-          # land in artifacts/linux/*.{deb,AppImage,AppImage.sig} and
-          # artifacts/windows/*.{exe,exe.sig}.
-          mv artifacts/linux/*.deb "$bundle_root/deb/"
-          mv artifacts/linux/*.AppImage "$bundle_root/appimage/"
-          mv artifacts/linux/*.AppImage.sig "$bundle_root/appimage/"
-          mv artifacts/windows/*-setup.exe "$bundle_root/nsis/"
-          mv artifacts/windows/*-setup.exe.sig "$bundle_root/nsis/"
+          # actions/upload-artifact@v4 preserves the source directory
+          # tree, so the downloaded artifacts land somewhere under
+          # artifacts/{linux,windows}/. Find each file by name and move
+          # it into the flat layout sign-artifacts.sh expects.
+          find artifacts/linux  -name "*.deb"           -exec mv {} "$bundle_root/deb/"      \;
+          find artifacts/linux  -name "*.AppImage"      -exec mv {} "$bundle_root/appimage/" \;
+          find artifacts/linux  -name "*.AppImage.sig"  -exec mv {} "$bundle_root/appimage/" \;
+          find artifacts/windows -name "*-setup.exe"     -exec mv {} "$bundle_root/nsis/"    \;
+          find artifacts/windows -name "*-setup.exe.sig" -exec mv {} "$bundle_root/nsis/"    \;
 
           deb_path=$(ls "$bundle_root/deb"/vaner-desktop_*_amd64.deb)
           app_path=$(ls "$bundle_root/appimage"/vaner-desktop_*_amd64.AppImage)
