@@ -6,18 +6,24 @@
 //! Menu structure:
 //!
 //!     ┌──────────────────┐
-//!     │  Open Vaner      │  ← toggles the popover
+//!     │  Open Vaner      │  ← popover::show
+//!     │  Show Companion… │  ← opens the companion window
 //!     ├──────────────────┤
-//!     │  Preferences…    │  ← emits menu:open-preferences event
-//!     │  Pause           │  ← emits menu:toggle-pause event
+//!     │  Preferences…    │  ← opens companion window on Preferences pane
+//!     │  Pause           │  ← disabled until daemon ships POST /engine/pause
 //!     ├──────────────────┤
 //!     │  Quit            │  ← app.exit(0)
 //!     └──────────────────┘
+//!
+//! `on_tray_icon_event` forwards to `tauri_plugin_positioner::on_tray_event`
+//! so the positioner plugin's tray-bounds cache stays populated. Without
+//! that, `popover::anchor` would always have to fall through to its
+//! TopRight fallback.
 
 use tauri::{
-    AppHandle, Emitter, Manager, Runtime,
+    AppHandle, Emitter, Runtime,
     menu::{Menu, MenuItem, PredefinedMenuItem},
-    tray::{TrayIconBuilder, TrayIconEvent},
+    tray::TrayIconBuilder,
 };
 
 use crate::popover;
@@ -26,6 +32,7 @@ pub const TRAY_ID: &str = "main";
 
 /// Menu item IDs — stringly-typed per Tauri's API.
 const ID_OPEN: &str = "open";
+const ID_COMPANION: &str = "companion";
 const ID_PREFERENCES: &str = "preferences";
 const ID_PAUSE: &str = "pause";
 const ID_QUIT: &str = "quit";
@@ -47,16 +54,22 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             ID_OPEN => {
                 let _ = popover::show(app);
             }
+            ID_COMPANION => {
+                // Routed through the same event the in-popover footer
+                // Details button uses, so the Svelte side decides which
+                // pane to land on (defaults to Prepared).
+                let _ = app.emit("menu:open-companion", Option::<String>::None);
+            }
             ID_PREFERENCES => {
-                // Preferences window TBD in a follow-up; for now the
-                // Svelte side shows a "coming soon" toast when it
-                // hears this.
-                let _ = app.emit("menu:open-preferences", ());
+                // Open the companion window directly on the Preferences
+                // pane. The Svelte side translates the payload into the
+                // hash route.
+                let _ = app.emit("menu:open-companion", Some("preferences"));
             }
             ID_PAUSE => {
-                // Pause state lives in the Svelte store for now; the
-                // Rust side will forward to the daemon when pause is
-                // wired (CONTRACT.md POST /engine/pause is Tier B).
+                // Disabled in the menu; this branch should never fire.
+                // Left here so the match stays exhaustive over the IDs
+                // we own.
                 let _ = app.emit("menu:toggle-pause", ());
             }
             ID_QUIT => {
@@ -65,16 +78,12 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { .. } = event {
-                // `menu_on_left_click(true)` means the menu pops on
-                // primary-button clicks for free. We also nudge the
-                // popover toward the tray icon so that when the user
-                // picks "Open Vaner" it appears anchored.
-                use tauri_plugin_positioner::{Position, WindowExt};
-                if let Some(window) = tray.app_handle().get_webview_window(popover::WINDOW_LABEL) {
-                    let _ = window.move_window(Position::TrayCenter);
-                }
-            }
+            // The positioner plugin caches the tray icon's bounds so
+            // popover::anchor can land on TrayCenter. Forward every
+            // tray event regardless of variant — hover, primary click,
+            // secondary click — so the cache is populated by the time
+            // a menu item gets clicked.
+            tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);
         })
         .build(app)?;
     Ok(())
@@ -82,11 +91,18 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
 fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let open = MenuItem::with_id(app, ID_OPEN, "Open Vaner", true, None::<&str>)?;
+    let companion = MenuItem::with_id(app, ID_COMPANION, "Show Companion…", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let prefs = MenuItem::with_id(app, ID_PREFERENCES, "Preferences…", true, None::<&str>)?;
-    let pause = MenuItem::with_id(app, ID_PAUSE, "Pause", true, None::<&str>)?;
+    // Pause is wired in the Svelte UI but the daemon side is not yet
+    // implemented (CONTRACT.md `POST /engine/pause` is Tier B). Disable
+    // the menu item rather than ship a broken affordance.
+    let pause = MenuItem::with_id(app, ID_PAUSE, "Pause (coming soon)", false, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, ID_QUIT, "Quit", true, None::<&str>)?;
 
-    Menu::with_items(app, &[&open, &sep1, &prefs, &pause, &sep2, &quit])
+    Menu::with_items(
+        app,
+        &[&open, &companion, &sep1, &prefs, &pause, &sep2, &quit],
+    )
 }
