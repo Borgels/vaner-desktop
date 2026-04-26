@@ -1,52 +1,43 @@
 <script lang="ts">
   import "../app.css";
   import { onMount } from "svelte";
-  import { goto } from "$app/navigation";
-  import { page } from "$app/stores";
+  import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { bootstrapAppStateListeners } from "$lib/stores/app-state.js";
   import { bootstrapUpdaterListeners } from "$lib/stores/updater.js";
   import { loadStatus } from "$lib/stores/setup.js";
-  import ToastStack from "$lib/components/ToastStack.svelte";
-  import FirstRunGuidance from "$lib/components/FirstRunGuidance.svelte";
-  import UpdateBanner from "$lib/components/UpdateBanner.svelte";
 
   let { children } = $props();
 
-  // Tracks whether the setup wizard has run. The FirstRunGuidance
-  // (GNOME app-indicator nudge) should only fire after setup
-  // completes; until then it stays suppressed.
-  let setupCompleted: boolean = $state(false);
-
   onMount(async () => {
+    // Only the main popover window owns the cross-window orchestration
+    // (event listeners, first-launch onboarding kickoff). The companion
+    // and onboarding windows mount this same layout but skip everything
+    // here.
+    const label = getCurrentWebviewWindow().label;
+    if (label !== "main") return;
+
     bootstrapAppStateListeners();
     bootstrapUpdaterListeners();
 
-    // First-run check: if there's no [setup] section yet, route to
-    // the wizard. The wizard is dismissible; the next launch fires
-    // the check again until the user applies an answer set.
+    // First-run check: if no setup has completed, open the dedicated
+    // onboarding window. The popover keeps rendering its current state
+    // (engineMissing / installedNotConnected / etc.) while the user
+    // runs through onboarding in the second window. On completion the
+    // onboarding side calls close_onboarding and the layout never
+    // re-fires this branch.
     try {
       const status = await loadStatus();
       const completedAt = status?.setup?.completed_at;
-      setupCompleted = !!completedAt;
-      if (!setupCompleted) {
-        // Don't redirect if the user is already on the setup page
-        // (or any nested setup route).
-        const currentPath = $page.url.pathname;
-        if (!currentPath.startsWith("/setup")) {
-          await goto("/setup");
-        }
+      if (!completedAt) {
+        await invoke("open_onboarding").catch(() => {});
       }
     } catch {
       // Daemon / CLI unreachable: leave the popover on its default
-      // route; the user can run setup later from Preferences.
-      setupCompleted = false;
+      // state. The user can re-run setup later from the companion
+      // window's Engine pane.
     }
   });
 </script>
 
-<UpdateBanner />
 {@render children?.()}
-<ToastStack />
-{#if setupCompleted}
-  <FirstRunGuidance />
-{/if}

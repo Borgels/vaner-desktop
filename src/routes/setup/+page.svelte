@@ -18,6 +18,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
+  import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import {
     setup,
     loadStatus,
@@ -27,6 +29,24 @@
     apply,
   } from "$lib/stores/setup.js";
   import { showToast } from "$lib/stores/toast.js";
+
+  /** When the wizard runs inside the dedicated onboarding window
+   *  (Tauri label "onboarding") completion closes the window via
+   *  close_onboarding instead of rerouting to /. The popover stays
+   *  on its current state and re-runs the reducer once the daemon
+   *  reports the new setup. */
+  async function exitWizard() {
+    try {
+      const label = getCurrentWebviewWindow().label;
+      if (label === "onboarding") {
+        await invoke("close_onboarding").catch(() => {});
+        return;
+      }
+    } catch {
+      /* fall through to default goto */
+    }
+    await goto("/");
+  }
   import type {
     BackgroundPosture,
     CloudPosture,
@@ -129,14 +149,14 @@
       }
       widening = null;
       showToast(`Setup complete: ${result.selected_bundle_id}`, "success");
-      await goto("/");
+      await exitWizard();
     } finally {
       applying = false;
     }
   }
 
   async function dismiss() {
-    await goto("/");
+    await exitWizard();
   }
 
   $: hardware = $setup.hardware;
