@@ -22,9 +22,11 @@ use tokio::sync::Mutex;
 
 use vaner_contract::HttpEngineClient;
 
+pub mod agent_detector;
 pub mod clients;
 pub mod commands;
 pub mod companion;
+pub mod engine;
 pub mod onboarding;
 pub mod popover;
 pub mod session;
@@ -122,6 +124,8 @@ pub fn run() {
             companion::close_companion,
             onboarding::open_onboarding,
             onboarding::close_onboarding,
+            engine::engine_status,
+            agent_detector::detect_agents,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
