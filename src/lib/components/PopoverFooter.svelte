@@ -7,7 +7,7 @@
   Companion…" item fires) so the Rust side owns window-open ceremony.
 -->
 <script lang="ts">
-  import { emit } from "@tauri-apps/api/event";
+  import { invoke } from "@tauri-apps/api/core";
   import VStateBadge, { type VState } from "$lib/components/primitives/VStateBadge.svelte";
   import V1GhostButton from "$lib/components/primitives/V1GhostButton.svelte";
 
@@ -18,11 +18,21 @@
     /** Disable Details when there's nothing the companion would surface
      *  (engineMissing, notInstalled). */
     detailsDisabled?: boolean;
+    /** Override which pane the companion lands on. Defaults to Prepared. */
+    detailsTab?: string | null;
   };
-  const { health = "on", healthLabel = "Engine running", detailsDisabled = false }: Props = $props();
+  const {
+    health = "on",
+    healthLabel = "Engine running",
+    detailsDisabled = false,
+    detailsTab = null,
+  }: Props = $props();
 
   function openCompanion() {
-    emit("menu:open-companion", null).catch(() => {});
+    invoke("open_companion", { tab: detailsTab }).catch((e) => {
+      // Fail silently — the daemon is still alive; the user can retry.
+      console.warn("open_companion failed", e);
+    });
   }
 </script>
 

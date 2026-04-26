@@ -24,6 +24,7 @@ use vaner_contract::HttpEngineClient;
 
 pub mod clients;
 pub mod commands;
+pub mod companion;
 pub mod popover;
 pub mod session;
 pub mod setup;
@@ -116,6 +117,8 @@ pub fn run() {
             setup::policy_refresh,
             setup::hardware_profile,
             setup::deep_run_defaults,
+            companion::open_companion,
+            companion::close_companion,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

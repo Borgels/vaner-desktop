@@ -21,12 +21,12 @@
 //! TopRight fallback.
 
 use tauri::{
-    AppHandle, Emitter, Runtime,
+    AppHandle, Runtime,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
 };
 
-use crate::popover;
+use crate::{companion, popover};
 
 pub const TRAY_ID: &str = "main";
 
@@ -55,22 +55,15 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                 let _ = popover::show(app);
             }
             ID_COMPANION => {
-                // Routed through the same event the in-popover footer
-                // Details button uses, so the Svelte side decides which
-                // pane to land on (defaults to Prepared).
-                let _ = app.emit("menu:open-companion", Option::<String>::None);
+                let _ = companion::open_window(app, None);
             }
             ID_PREFERENCES => {
-                // Open the companion window directly on the Preferences
-                // pane. The Svelte side translates the payload into the
-                // hash route.
-                let _ = app.emit("menu:open-companion", Some("preferences"));
+                let _ = companion::open_window(app, Some("preferences".into()));
             }
             ID_PAUSE => {
                 // Disabled in the menu; this branch should never fire.
                 // Left here so the match stays exhaustive over the IDs
                 // we own.
-                let _ = app.emit("menu:toggle-pause", ());
             }
             ID_QUIT => {
                 app.exit(0);
