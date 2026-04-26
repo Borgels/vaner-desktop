@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Fixed (0.2.1 — startup panic on real Linux hosts)
+- **`sse_task::spawn`** used a bare `tokio::spawn` from inside the
+  Tauri setup callback, which has no Tokio reactor in scope and
+  panicked immediately: *"there is no reactor running, must be
+  called from the context of a Tokio 1.x runtime"*. The app exited
+  with code 101 before any UI showed up. Switched to
+  `tauri::async_runtime::spawn` and updated `AppState.sse_handle`
+  to the matching `tauri::async_runtime::JoinHandle` type. Bug had
+  been present since the L4 scaffold but only surfaced when the
+  v0.2.0 AppImage was smoke-tested on Ubuntu 24.04.
+
 ### Changed (0.2.0 — cross-platform: Linux + Windows in one repo)
 - **Repo renamed `vaner-desktop-linux` → `vaner-desktop`.** GitHub
   redirects keep old URLs working; the apt repo at `apt.vaner.ai`
