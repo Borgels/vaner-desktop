@@ -167,18 +167,17 @@ jobs:
         run: |
           $bundleRoot = "src-tauri/target/release/bundle/nsis"
           $version = (node -e "console.log(require('./src-tauri/tauri.conf.json').version)")
+          # Tauri v2 NSIS produces a single `*-setup.exe` plus a `*-setup.exe.sig`
+          # (minisign over the .exe). The updater downloads the .exe directly
+          # and replaces in place — there is no separate .nsis.zip.
           $rawExe = Get-ChildItem -Path $bundleRoot -Filter "*-setup.exe" | Select-Object -First 1
-          $rawZip = Get-ChildItem -Path $bundleRoot -Filter "*-setup.nsis.zip" | Select-Object -First 1
-          $rawSig = Get-ChildItem -Path $bundleRoot -Filter "*-setup.nsis.zip.sig" | Select-Object -First 1
+          $rawSig = Get-ChildItem -Path $bundleRoot -Filter "*-setup.exe.sig" | Select-Object -First 1
           if (-not $rawExe) { Write-Error "::error::tauri produced no NSIS .exe"; exit 1 }
-          if (-not $rawZip) { Write-Error "::error::tauri produced no NSIS .nsis.zip (updater)"; exit 1 }
-          if (-not $rawSig) { Write-Error "::error::tauri produced no NSIS .sig (TAURI_SIGNING_PRIVATE_KEY missing?)"; exit 1 }
+          if (-not $rawSig) { Write-Error "::error::tauri produced no NSIS .exe.sig (TAURI_SIGNING_PRIVATE_KEY missing?)"; exit 1 }
 
           $exeName = "vaner-desktop_${version}_x64-setup.exe"
-          $zipName = "vaner-desktop_${version}_x64-setup.nsis.zip"
-          $sigName = "vaner-desktop_${version}_x64-setup.nsis.zip.sig"
+          $sigName = "vaner-desktop_${version}_x64-setup.exe.sig"
           if ($rawExe.Name -ne $exeName) { Rename-Item -Path $rawExe.FullName -NewName $exeName }
-          if ($rawZip.Name -ne $zipName) { Rename-Item -Path $rawZip.FullName -NewName $zipName }
           if ($rawSig.Name -ne $sigName) { Rename-Item -Path $rawSig.FullName -NewName $sigName }
 
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
@@ -190,8 +189,7 @@ jobs:
           name: windows-bundle
           path: |
             src-tauri/target/release/bundle/nsis/vaner-desktop_*_x64-setup.exe
-            src-tauri/target/release/bundle/nsis/vaner-desktop_*_x64-setup.nsis.zip
-            src-tauri/target/release/bundle/nsis/vaner-desktop_*_x64-setup.nsis.zip.sig
+            src-tauri/target/release/bundle/nsis/vaner-desktop_*_x64-setup.exe.sig
           if-no-files-found: error
           retention-days: 7
 
@@ -233,26 +231,23 @@ jobs:
           mkdir -p "$bundle_root/deb" "$bundle_root/appimage" "$bundle_root/nsis"
 
           # The artifact-upload action flattens directories; downloads
-          # land in artifacts/linux/*.{deb,AppImage,sig} and
-          # artifacts/windows/*.{exe,nsis.zip,sig}.
+          # land in artifacts/linux/*.{deb,AppImage,AppImage.sig} and
+          # artifacts/windows/*.{exe,exe.sig}.
           mv artifacts/linux/*.deb "$bundle_root/deb/"
           mv artifacts/linux/*.AppImage "$bundle_root/appimage/"
           mv artifacts/linux/*.AppImage.sig "$bundle_root/appimage/"
           mv artifacts/windows/*-setup.exe "$bundle_root/nsis/"
-          mv artifacts/windows/*-setup.nsis.zip "$bundle_root/nsis/"
-          mv artifacts/windows/*-setup.nsis.zip.sig "$bundle_root/nsis/"
+          mv artifacts/windows/*-setup.exe.sig "$bundle_root/nsis/"
 
           deb_path=$(ls "$bundle_root/deb"/vaner-desktop_*_amd64.deb)
           app_path=$(ls "$bundle_root/appimage"/vaner-desktop_*_amd64.AppImage)
           exe_path=$(ls "$bundle_root/nsis"/vaner-desktop_*_x64-setup.exe)
-          zip_path=$(ls "$bundle_root/nsis"/vaner-desktop_*_x64-setup.nsis.zip)
           version=$(echo "$deb_path" | sed -E 's/.*vaner-desktop_([^_]+)_.*/\1/')
 
           echo "bundle_root=$bundle_root" >> "$GITHUB_OUTPUT"
           echo "deb_path=$deb_path" >> "$GITHUB_OUTPUT"
           echo "app_path=$app_path" >> "$GITHUB_OUTPUT"
           echo "exe_path=$exe_path" >> "$GITHUB_OUTPUT"
-          echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           find "$bundle_root" -type f | sort
 
@@ -277,17 +272,17 @@ jobs:
           set -euo pipefail
           bundle_root="${{ steps.stage.outputs.bundle_root }}"
           app_sig=$(find "$bundle_root/appimage" -maxdepth 1 -name "*.AppImage.sig" -print -quit)
-          win_sig=$(find "$bundle_root/nsis" -maxdepth 1 -name "*.nsis.zip.sig" -print -quit)
+          win_sig=$(find "$bundle_root/nsis" -maxdepth 1 -name "*.exe.sig" -print -quit)
           [[ -n "$app_sig" ]] || { echo "::error::missing AppImage .sig"; exit 1; }
-          [[ -n "$win_sig" ]] || { echo "::error::missing NSIS .nsis.zip.sig"; exit 1; }
+          [[ -n "$win_sig" ]] || { echo "::error::missing NSIS .exe.sig"; exit 1; }
           app_sig_content=$(tr -d '\n' < "$app_sig")
           win_sig_content=$(tr -d '\n' < "$win_sig")
           app_name=$(basename "${{ steps.stage.outputs.app_path }}")
-          zip_name=$(basename "${{ steps.stage.outputs.zip_path }}")
+          exe_name=$(basename "${{ steps.stage.outputs.exe_path }}")
           version="${GITHUB_REF_NAME#v}"
           pub_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           app_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${app_name}"
-          win_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${zip_name}"
+          win_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${exe_name}"
           out="$bundle_root/latest.json"
           python3 -c "
           import json
@@ -320,8 +315,7 @@ jobs:
             ${{ steps.stage.outputs.app_path }}.asc
             ${{ steps.stage.outputs.exe_path }}
             ${{ steps.stage.outputs.exe_path }}.asc
-            ${{ steps.stage.outputs.zip_path }}
-            ${{ steps.stage.outputs.zip_path }}.asc
+            ${{ steps.stage.outputs.exe_path }}.sig
             ${{ steps.stage.outputs.bundle_root }}/SHA256SUMS
             ${{ steps.stage.outputs.bundle_root }}/SHA256SUMS.asc
             ${{ steps.manifest.outputs.latest_json_path }}
