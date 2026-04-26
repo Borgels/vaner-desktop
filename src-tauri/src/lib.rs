@@ -30,6 +30,7 @@ pub mod setup;
 pub mod sse_task;
 pub mod tray;
 pub mod updater;
+pub mod vaner_cli;
 
 /// Process-wide state. A single reqwest-backed HTTP client is shared
 /// across every `#[tauri::command]` so connection pooling works.

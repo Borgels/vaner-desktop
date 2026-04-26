@@ -68,31 +68,6 @@ pub struct PolicyRefreshResult {
     pub detail: String,
 }
 
-// ---------------------------------------------------------------------------
-// Subprocess plumbing — `resolve_vaner_bin()` is duplicated from the
-// `clients` module to avoid a cross-module pub leak. If a third caller
-// shows up, hoist into a shared `vaner_cli` helper.
-// ---------------------------------------------------------------------------
-
-fn resolve_vaner_bin() -> Result<String, String> {
-    if let Ok(explicit) = std::env::var("VANER_BIN") {
-        if !explicit.is_empty() {
-            return Ok(explicit);
-        }
-    }
-    let output = std::process::Command::new("which")
-        .arg("vaner")
-        .output()
-        .map_err(|e| format!("could not invoke `which vaner`: {e}"))?;
-    if !output.status.success() {
-        return Err(
-            "Vaner binary not found on PATH. Install Vaner via vaner.ai/install or set $VANER_BIN."
-                .into(),
-        );
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
 fn repo_root_arg() -> String {
     std::env::var("VANER_PATH").unwrap_or_else(|_| ".".to_string())
 }
@@ -102,7 +77,7 @@ async fn run_vaner_setup_json(
     stdin_payload: Option<String>,
     allow_nonzero: bool,
 ) -> Result<String, String> {
-    let bin = resolve_vaner_bin()?;
+    let bin = crate::vaner_cli::resolve_vaner_bin()?;
     let mut cmd = Command::new(&bin);
     cmd.arg("setup")
         .args(extra_args)

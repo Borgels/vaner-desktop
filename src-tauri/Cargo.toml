@@ -27,6 +27,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 async-trait = "0.1"
+which = "7"
 
 # Shared contract layer. Pinned to the feat/vaner-contract-crate tag
 # until L1 lands on main; swap to `tag = "v0.8.x"` then.
