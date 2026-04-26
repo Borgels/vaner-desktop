@@ -46,7 +46,10 @@ fn classify(comm: &str) -> Option<&'static str> {
 pub fn detect_agents() -> Result<AgentDetectorOut, String> {
     #[cfg(not(target_os = "linux"))]
     {
-        return Ok(AgentDetectorOut { running_count: 0, suggestions: known_suggestions() });
+        return Ok(AgentDetectorOut {
+            running_count: 0,
+            suggestions: known_suggestions(),
+        });
     }
 
     #[cfg(target_os = "linux")]
