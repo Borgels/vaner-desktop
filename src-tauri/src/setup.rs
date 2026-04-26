@@ -317,12 +317,12 @@ pub async fn setup_apply(payload: Value) -> Result<AppliedPolicy, String> {
 
     // ---- 3. Shell out to `vaner setup apply --json`. ---------------
     let mut tmp_path: Option<std::path::PathBuf> = None;
-    let mut owned_args: Vec<String> = Vec::new();
-
-    owned_args.push("apply".into());
-    owned_args.push("--json".into());
-    owned_args.push("--path".into());
-    owned_args.push(repo_root_arg());
+    let mut owned_args: Vec<String> = vec![
+        "apply".into(),
+        "--json".into(),
+        "--path".into(),
+        repo_root_arg(),
+    ];
 
     if let Some(id) = explicit_bundle_id {
         owned_args.push("--bundle-id".into());
@@ -379,7 +379,7 @@ pub async fn setup_apply(payload: Value) -> Result<AppliedPolicy, String> {
         .unwrap_or_default();
     let daemon = parsed
         .get("daemon")
-        .and_then(|v| {
+        .map(|v| {
             let reachable = v
                 .get("reachable")
                 .and_then(|x| x.as_bool())
@@ -388,7 +388,7 @@ pub async fn setup_apply(payload: Value) -> Result<AppliedPolicy, String> {
                 .get("detail")
                 .and_then(|x| x.as_str())
                 .map(|s| s.to_string());
-            Some(DaemonStatus { reachable, detail })
+            DaemonStatus { reachable, detail }
         })
         .unwrap_or_default();
 
