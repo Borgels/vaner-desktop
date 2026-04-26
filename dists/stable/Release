@@ -2,22 +2,22 @@ Origin: Vaner
 Label: Vaner Desktop Linux
 Suite: stable
 Codename: stable
-Date: Sun, 26 Apr 2026 19:10:43 UTC
+Date: Sun, 26 Apr 2026 19:34:43 UTC
 Architectures: amd64
 Components: main
 Description: Signed apt repository for the Vaner desktop Linux companion.
 MD5Sum:
- 944be325af60d1817b1e887c10b83c0d 741 main/binary-amd64/Packages
- 8229c63ad26441ce114fd5e257afa05a 469 main/binary-amd64/Packages.gz
- 0b57e88f3db40ba22bddb99c2bd924ef 538 main/binary-amd64/Packages.bz2
+ db9ae4ad157e95d9df3bdd447cd66b1d 741 main/binary-amd64/Packages
+ 1bda6a11e3457379f0eb31f12560914b 471 main/binary-amd64/Packages.gz
+ 50274c0d28eca86d438071012399be1b 531 main/binary-amd64/Packages.bz2
  e240733dbdcd2c092ced08dd2b47fd5b 167 main/binary-amd64/Release
 SHA1:
- 84a99aa8b72dc972b12c57e79d3dd9a514769d75 741 main/binary-amd64/Packages
- 57bb93408c329336d276e56e598df35da05d9a22 469 main/binary-amd64/Packages.gz
- 26e8798d4151b9b33bf797d1928b076c482934d3 538 main/binary-amd64/Packages.bz2
+ 614883a5c715dea6fc91c61b8553d9bd745e2db7 741 main/binary-amd64/Packages
+ 1e70f622b5a3ba8cc569471e0e6f8a19680dba4a 471 main/binary-amd64/Packages.gz
+ 0a4bfb45d4b51518b2c7c56695ab49a16b194107 531 main/binary-amd64/Packages.bz2
  1758513e1d8a4ff758e9f960f764fc66e3a3cad4 167 main/binary-amd64/Release
 SHA256:
- 8e4ab20d5c4a74e368a8b1b7e36778a262c5628b22798a7cad5d94c29d8df164 741 main/binary-amd64/Packages
- e43331e158b8d2f79fdaf68d59093ec084f6c61eb4d660ac4005e75ccce50e1e 469 main/binary-amd64/Packages.gz
- 43164ffe7bd6af1385b0ed10844813119705351903e466ddaa5f91afe763a756 538 main/binary-amd64/Packages.bz2
+ 218ff554f89907b0661722bf88c31bf0dfb15af2d77aa1deeb9fc939cad92335 741 main/binary-amd64/Packages
+ 4a2e8d3479e78664e7e308a69fbe8d79149e75fc620c612c5e5d3278502e9fa9 471 main/binary-amd64/Packages.gz
+ 6f0960412ed77e3cbb990bc7de8794a4c4cce9f92c9b2e8297de76a34c3c5dc9 531 main/binary-amd64/Packages.bz2
  dab71b787b69609fcaa493b58d2c0ebb071489e513fb56210cc91bb733226210 167 main/binary-amd64/Release
