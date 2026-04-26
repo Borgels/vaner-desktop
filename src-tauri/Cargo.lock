@@ -4886,8 +4886,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "vaner-linux"
-version = "0.1.0"
+name = "vaner-desktop"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "serde",

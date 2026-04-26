@@ -74,7 +74,8 @@ fi
 echo "  desktop file: installed"
 
 # Sanity: the binary is on PATH.
-command -v vaner-linux >/dev/null 2>&1 \
+command -v vaner-desktop >/dev/null 2>&1 \
+  || command -v vaner-linux >/dev/null 2>&1 \
   || command -v vaner-desktop-linux >/dev/null 2>&1 \
   || command -v Vaner >/dev/null 2>&1 \
   || fail "no Vaner binary on PATH after install"

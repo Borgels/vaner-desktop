@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Changed (0.2.0 — cross-platform: Linux + Windows in one repo)
+- **Repo renamed `vaner-desktop-linux` → `vaner-desktop`.** GitHub
+  redirects keep old URLs working; the apt repo at `apt.vaner.ai`
+  is unaffected (CNAME survives the rename).
+- **Crate / package rename.** `vaner-linux` → `vaner-desktop` in
+  `Cargo.toml` and `package.json`; lib renamed to `vaner_desktop_lib`.
+  Built binary on Linux is now `vaner-desktop` (not `vaner-linux`).
+- **NSIS Windows bundle** target added to `tauri.conf.json` —
+  `pnpm tauri build --bundles nsis` produces a per-user `.exe`
+  installer. Windows 10 1809+ supported via WebView2.
+- **`vaner_cli` shared module** replaces the duplicated POSIX
+  `which vaner` shell-outs in `clients.rs` / `setup.rs`. Uses the
+  cross-platform `which` crate so `.exe` resolution works on Windows.
+- **`session.rs` AppIndicator nudge** is now `cfg`-gated to Linux —
+  no-op on Windows / macOS.
+- **Updater endpoint** points at the renamed repo's `latest.json`.
+
 ### Added (0.8.6 WS-DESK-LINUX — Simple-Mode setup)
 - **`/setup` first-run wizard** (`src/routes/setup/+page.svelte`) — five-step Simple-Mode flow mirroring the macOS desktop. Welcome → work styles + priority → compute / cloud / background posture → recommendation review (with hardware-tier readout, "Why this bundle?" disclosure, runner-ups) → confirm + apply. Triggered by `setup.completed_at == null` from the root layout. Cloud-widening confirm dialog matches the macOS pattern: when `setup_apply` returns `widens_cloud_posture=true, written=false`, the wizard re-asks before re-calling with `confirm_cloud_widening=true`.
 - **Engine and Telemetry preferences tabs** (`src/routes/preferences/EnginePanel.svelte`, `TelemetryPanel.svelte`) — previously stubbed "coming in 0.8.6". Engine tab carries a Simple/Advanced segmented control backed by localStorage (`vaner.pref.setupMode`); Simple shows the user's answers + bundle summary + "Why this bundle?" reasons + a "Re-run setup wizard" button; Advanced lists every bundle-managed knob read-only with a hint to use `vaner setup advanced` for direct TOML edits. Telemetry tab renders the HardwareProfile, the in-flight prediction count by source + ETA bucket, and the active bundle's tuning knobs.
