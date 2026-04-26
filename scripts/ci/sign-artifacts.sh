@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# sign-artifacts.sh — sign every .deb and .AppImage in a bundle
-# directory with Vaner's release GPG key. Produces detached .asc
-# sidecars and a single signed SHA256SUMS file for the whole set.
+# sign-artifacts.sh — sign every .deb, .AppImage, NSIS .exe, and NSIS
+# .nsis.zip in a bundle directory with Vaner's release GPG key.
+# Produces detached .asc sidecars and a single signed SHA256SUMS file
+# for the whole set.
 #
 # The embedded `dpkg-sig` signature is applied to .deb files only.
-# .AppImage files use detached-signature-only.
+# Other formats (.AppImage, Windows .exe, .nsis.zip) use detached-
+# signature-only.
 #
 # Required env (from GitHub Secrets):
 #   VANER_RELEASE_GPG_PRIVKEY     — base64(armored private key)
@@ -53,9 +55,11 @@ gpg_sign() {
 # under appimage/. We don't assume those exact names — just glob.
 mapfile -t debs      < <(find "$bundle_dir" -maxdepth 3 -type f -name "*.deb"      | sort)
 mapfile -t appimages < <(find "$bundle_dir" -maxdepth 3 -type f -name "*.AppImage" | sort)
+mapfile -t exes      < <(find "$bundle_dir" -maxdepth 3 -type f -name "*-setup.exe" | sort)
+mapfile -t winzips   < <(find "$bundle_dir" -maxdepth 3 -type f -name "*.nsis.zip"  | sort)
 
-if ((${#debs[@]} + ${#appimages[@]} == 0)); then
-  echo "ERROR: no .deb or .AppImage bundles found under $bundle_dir" >&2
+if ((${#debs[@]} + ${#appimages[@]} + ${#exes[@]} + ${#winzips[@]} == 0)); then
+  echo "ERROR: no .deb, .AppImage, .exe, or .nsis.zip bundles found under $bundle_dir" >&2
   exit 4
 fi
 
@@ -77,11 +81,23 @@ for a in "${appimages[@]}"; do
   gpg_sign "$a"
 done
 
+for e in "${exes[@]}"; do
+  echo "→ signing Windows .exe (detached): $e"
+  gpg_sign "$e"
+done
+
+for z in "${winzips[@]}"; do
+  echo "→ signing Windows .nsis.zip (detached): $z"
+  gpg_sign "$z"
+done
+
 # Single consolidated SHA256SUMS at the bundle-dir root, signed.
 sums_path="$bundle_dir/SHA256SUMS"
 {
   for d in "${debs[@]}";      do (cd "$(dirname "$d")" && sha256sum "$(basename "$d")" "$(basename "$d").asc"); done
   for a in "${appimages[@]}"; do (cd "$(dirname "$a")" && sha256sum "$(basename "$a")" "$(basename "$a").asc"); done
+  for e in "${exes[@]}";      do (cd "$(dirname "$e")" && sha256sum "$(basename "$e")" "$(basename "$e").asc"); done
+  for z in "${winzips[@]}";   do (cd "$(dirname "$z")" && sha256sum "$(basename "$z")" "$(basename "$z").asc"); done
 } > "$sums_path"
 
 gpg --batch --pinentry-mode loopback \
@@ -93,4 +109,6 @@ echo
 echo "signed artifacts:"
 for d in "${debs[@]}";      do ls -la "$d" "$d.asc"; done
 for a in "${appimages[@]}"; do ls -la "$a" "$a.asc"; done
+for e in "${exes[@]}";      do ls -la "$e" "$e.asc"; done
+for z in "${winzips[@]}";   do ls -la "$z" "$z.asc"; done
 ls -la "$sums_path" "$sums_path.asc"

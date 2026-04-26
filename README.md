@@ -1,24 +1,31 @@
-# vaner-desktop-linux
+# vaner-desktop
 
-Linux desktop companion for [Vaner](https://github.com/Borgels/Vaner) —
-the predictive-context engine. Menu-bar / tray app that watches the
-daemon's active predictions over SSE and lets the user adopt a
-prepared package into whichever AI agent (Claude Code, Cursor, Zed,
-etc.) is running.
+Cross-platform (Linux + Windows) desktop companion for
+[Vaner](https://github.com/Borgels/Vaner) — the predictive-context
+engine. Menu-bar / tray app that watches the daemon's active
+predictions over SSE and lets the user adopt a prepared package into
+whichever AI agent (Claude Code, Cursor, Zed, etc.) is running.
 
 Tauri v2 + SvelteKit. Rust backend depends on the shared
 [`vaner-contract`](https://github.com/Borgels/Vaner/tree/main/crates/vaner-contract)
 crate from the Vaner monorepo; the SwiftUI macOS sibling
-([vaner-desktop](https://github.com/Borgels/vaner-desktop-macos)) uses the
-same conformance fixtures to stay in lock-step without sharing a
-runtime.
+([vaner-desktop-macos](https://github.com/Borgels/vaner-desktop-macos))
+uses the same conformance fixtures to stay in lock-step without
+sharing a runtime.
 
-Target: **Ubuntu 22.04+ / Debian 12+**, X11 or KDE Wayland. Stock
-GNOME on Wayland needs `gnome-shell-extension-appindicator` for the
-tray icon to appear — the app detects this at first launch and
-surfaces install guidance.
+Targets:
+
+- **Linux:** Ubuntu 22.04+ / Debian 12+, X11 or KDE Wayland. Stock
+  GNOME on Wayland needs `gnome-shell-extension-appindicator` for the
+  tray icon to appear — the app detects this at first launch and
+  surfaces install guidance.
+- **Windows:** Windows 10 1809+ (uses the system WebView2 runtime).
+  Unsigned for the 0.x prereleases — SmartScreen will show "Windows
+  protected your PC → More info → Run anyway" on first install.
 
 ## Install
+
+### Linux
 
 Three paths, all signed — pick whichever fits your workflow:
 
@@ -35,7 +42,7 @@ through `apt upgrade` without you running anything else.
 > collide.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop-linux/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop/main/scripts/install.sh | bash
 ```
 
 Prefer the plain-apt form (identical result, no pipe-to-bash):
@@ -54,7 +61,7 @@ sudo apt update && sudo apt install vaner-desktop
 ### 2. One-off `.deb` (no apt-repo registration)
 
 ```bash
-VANER_MODE=deb curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop-linux/main/scripts/install.sh | bash
+VANER_MODE=deb curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop/main/scripts/install.sh | bash
 ```
 
 Same fingerprint-pin + detached-sig verification as the apt path;
@@ -63,10 +70,10 @@ subsequent releases don't auto-install unless you re-run.
 ### 3. Manual GPG verify then `apt install`
 
 ```bash
-VER=$(curl -fsSL https://api.github.com/repos/Borgels/vaner-desktop-linux/releases/latest | jq -r .tag_name)
-curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner-desktop_${VER#v}_amd64.deb
-curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner-desktop_${VER#v}_amd64.deb.asc
-curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/release-key.asc
+VER=$(curl -fsSL https://api.github.com/repos/Borgels/vaner-desktop/releases/latest | jq -r .tag_name)
+curl -LO https://github.com/Borgels/vaner-desktop/releases/download/$VER/vaner-desktop_${VER#v}_amd64.deb
+curl -LO https://github.com/Borgels/vaner-desktop/releases/download/$VER/vaner-desktop_${VER#v}_amd64.deb.asc
+curl -LO https://github.com/Borgels/vaner-desktop/releases/download/$VER/release-key.asc
 
 gpg --import release-key.asc
 gpg --verify vaner-desktop_${VER#v}_amd64.deb.asc vaner-desktop_${VER#v}_amd64.deb
@@ -85,15 +92,33 @@ Every release ships an `.AppImage` alongside the `.deb`. Download,
 verify, `chmod +x`, run:
 
 ```bash
-VER=$(curl -fsSL https://api.github.com/repos/Borgels/vaner-desktop-linux/releases/latest | jq -r .tag_name)
-curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner-desktop_${VER#v}_amd64.AppImage
-curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/vaner-desktop_${VER#v}_amd64.AppImage.asc
-curl -LO https://github.com/Borgels/vaner-desktop-linux/releases/download/$VER/release-key.asc
+VER=$(curl -fsSL https://api.github.com/repos/Borgels/vaner-desktop/releases/latest | jq -r .tag_name)
+curl -LO https://github.com/Borgels/vaner-desktop/releases/download/$VER/vaner-desktop_${VER#v}_amd64.AppImage
+curl -LO https://github.com/Borgels/vaner-desktop/releases/download/$VER/vaner-desktop_${VER#v}_amd64.AppImage.asc
+curl -LO https://github.com/Borgels/vaner-desktop/releases/download/$VER/release-key.asc
 gpg --import release-key.asc
 gpg --verify vaner-desktop_${VER#v}_amd64.AppImage.asc vaner-desktop_${VER#v}_amd64.AppImage
 chmod +x vaner-desktop_${VER#v}_amd64.AppImage
 ./vaner-desktop_${VER#v}_amd64.AppImage
 ```
+
+### Windows
+
+Download the NSIS installer from the latest GitHub Release and run
+it. The installer is per-user — no admin prompt — and registers an
+auto-updater that follows the same minisign-signed `latest.json`
+flow as the AppImage.
+
+```powershell
+$ver = (Invoke-RestMethod https://api.github.com/repos/Borgels/vaner-desktop/releases/latest).tag_name
+$url = "https://github.com/Borgels/vaner-desktop/releases/download/$ver/vaner-desktop_${ver -replace '^v',''}_x64-setup.exe"
+Invoke-WebRequest $url -OutFile vaner-desktop-setup.exe
+Start-Process .\vaner-desktop-setup.exe
+```
+
+> **SmartScreen:** the 0.x installers are unsigned. Windows will say
+> "Windows protected your PC". Click **More info → Run anyway**.
+> Code-signing is on the roadmap for 1.0.
 
 ## Updates
 
@@ -117,7 +142,7 @@ your system's normal update flow — pick one, not both.
 
 ## Build
 
-Prereqs:
+Prereqs (Linux):
 ```bash
 # Ubuntu 24.04 system deps for WebKitGTK-based Tauri:
 sudo apt install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
@@ -134,10 +159,24 @@ pnpm install
 pnpm tauri dev
 ```
 
-Build (no packaging yet — L6 wires up `.deb`):
+Build a local Linux bundle:
 ```bash
-pnpm tauri build --no-bundle
+pnpm tauri build --bundles deb,appimage
 ```
+
+### Windows
+
+Prereqs (Windows): Rust 1.85+ with the `x86_64-pc-windows-msvc` target,
+Node 20+ with corepack, and the WebView2 runtime (Windows 11 has it
+preinstalled; Tauri auto-installs it on Windows 10 if missing).
+
+```powershell
+pnpm install
+pnpm tauri build --bundles nsis
+```
+
+The installer lands at
+`src-tauri/target/release/bundle/nsis/vaner-desktop_<version>_x64-setup.exe`.
 
 ## Architecture
 

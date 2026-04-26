@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  build-linux:
     runs-on: ubuntu-22.04 # oldest supported glibc → .deb/.AppImage run on 22.04+
     timeout-minutes: 45
 
@@ -68,17 +68,16 @@ jobs:
 
       - name: enable bundle for this run
         run: |
-          sed -i 's/"active": false,/"active": true,/' src-tauri/tauri.conf.json
+          node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p));j.bundle.active=true;fs.writeFileSync(p,JSON.stringify(j,null,2));"
           grep '"active":' src-tauri/tauri.conf.json
 
       - name: build .deb + .AppImage via tauri-bundler
         env:
-          # Tauri CLI reads these to sign the updater manifest + produce latest.json.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --bundles deb,appimage
 
-      - name: collect artifact paths
+      - name: collect + rename Linux artifacts
         id: collect
         run: |
           set -e
@@ -105,12 +104,157 @@ jobs:
             mv -- "$raw_sig" "$app_path.sig"
           fi
 
-          latest_json=$(find "$bundle_root" -maxdepth 3 -name "latest.json" -print -quit || true)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "deb_path=$deb_path" >> "$GITHUB_OUTPUT"
+          echo "app_path=$app_path" >> "$GITHUB_OUTPUT"
+          find "$bundle_root" -maxdepth 3 -type f | sort
+
+      - name: upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-bundle
+          path: |
+            src-tauri/target/release/bundle/deb/vaner-desktop_*_amd64.deb
+            src-tauri/target/release/bundle/appimage/vaner-desktop_*_amd64.AppImage
+            src-tauri/target/release/bundle/appimage/vaner-desktop_*_amd64.AppImage.sig
+          if-no-files-found: error
+          retention-days: 7
+
+  build-windows:
+    runs-on: windows-2022
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: corepack enable
+        shell: pwsh
+      - run: corepack prepare pnpm@latest --activate
+        shell: pwsh
+      - run: pnpm install --frozen-lockfile
+        shell: pwsh
+
+      - name: enable bundle for this run
+        shell: pwsh
+        run: |
+          node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p));j.bundle.active=true;fs.writeFileSync(p,JSON.stringify(j,null,2));"
+          Select-String -Path src-tauri/tauri.conf.json -Pattern '"active":'
+
+      - name: build NSIS installer via tauri-bundler
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --bundles nsis
+
+      - name: collect + rename Windows artifacts
+        id: collect
+        shell: pwsh
+        run: |
+          $bundleRoot = "src-tauri/target/release/bundle/nsis"
+          $version = (node -e "console.log(require('./src-tauri/tauri.conf.json').version)")
+          $rawExe = Get-ChildItem -Path $bundleRoot -Filter "*-setup.exe" | Select-Object -First 1
+          $rawZip = Get-ChildItem -Path $bundleRoot -Filter "*-setup.nsis.zip" | Select-Object -First 1
+          $rawSig = Get-ChildItem -Path $bundleRoot -Filter "*-setup.nsis.zip.sig" | Select-Object -First 1
+          if (-not $rawExe) { Write-Error "::error::tauri produced no NSIS .exe"; exit 1 }
+          if (-not $rawZip) { Write-Error "::error::tauri produced no NSIS .nsis.zip (updater)"; exit 1 }
+          if (-not $rawSig) { Write-Error "::error::tauri produced no NSIS .sig (TAURI_SIGNING_PRIVATE_KEY missing?)"; exit 1 }
+
+          $exeName = "vaner-desktop_${version}_x64-setup.exe"
+          $zipName = "vaner-desktop_${version}_x64-setup.nsis.zip"
+          $sigName = "vaner-desktop_${version}_x64-setup.nsis.zip.sig"
+          if ($rawExe.Name -ne $exeName) { Rename-Item -Path $rawExe.FullName -NewName $exeName }
+          if ($rawZip.Name -ne $zipName) { Rename-Item -Path $rawZip.FullName -NewName $zipName }
+          if ($rawSig.Name -ne $sigName) { Rename-Item -Path $rawSig.FullName -NewName $sigName }
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Get-ChildItem $bundleRoot
+
+      - name: upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-bundle
+          path: |
+            src-tauri/target/release/bundle/nsis/vaner-desktop_*_x64-setup.exe
+            src-tauri/target/release/bundle/nsis/vaner-desktop_*_x64-setup.nsis.zip
+            src-tauri/target/release/bundle/nsis/vaner-desktop_*_x64-setup.nsis.zip.sig
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+        with:
+          persist-credentials: false
+
+      - name: install system deps for signing + apt repo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            dpkg-sig \
+            gnupg \
+            reprepro
+
+      - name: download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-bundle
+          path: artifacts/linux
+
+      - name: download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-bundle
+          path: artifacts/windows
+
+      - name: stage artifacts into the bundle layout sign-artifacts.sh expects
+        id: stage
+        run: |
+          set -e
+          bundle_root="artifacts/bundle"
+          mkdir -p "$bundle_root/deb" "$bundle_root/appimage" "$bundle_root/nsis"
+
+          # The artifact-upload action flattens directories; downloads
+          # land in artifacts/linux/*.{deb,AppImage,sig} and
+          # artifacts/windows/*.{exe,nsis.zip,sig}.
+          mv artifacts/linux/*.deb "$bundle_root/deb/"
+          mv artifacts/linux/*.AppImage "$bundle_root/appimage/"
+          mv artifacts/linux/*.AppImage.sig "$bundle_root/appimage/"
+          mv artifacts/windows/*-setup.exe "$bundle_root/nsis/"
+          mv artifacts/windows/*-setup.nsis.zip "$bundle_root/nsis/"
+          mv artifacts/windows/*-setup.nsis.zip.sig "$bundle_root/nsis/"
+
+          deb_path=$(ls "$bundle_root/deb"/vaner-desktop_*_amd64.deb)
+          app_path=$(ls "$bundle_root/appimage"/vaner-desktop_*_amd64.AppImage)
+          exe_path=$(ls "$bundle_root/nsis"/vaner-desktop_*_x64-setup.exe)
+          zip_path=$(ls "$bundle_root/nsis"/vaner-desktop_*_x64-setup.nsis.zip)
+          version=$(echo "$deb_path" | sed -E 's/.*vaner-desktop_([^_]+)_.*/\1/')
+
           echo "bundle_root=$bundle_root" >> "$GITHUB_OUTPUT"
           echo "deb_path=$deb_path" >> "$GITHUB_OUTPUT"
           echo "app_path=$app_path" >> "$GITHUB_OUTPUT"
-          echo "latest_json=${latest_json:-}" >> "$GITHUB_OUTPUT"
-          find "$bundle_root" -maxdepth 3 -type f | sort
+          echo "exe_path=$exe_path" >> "$GITHUB_OUTPUT"
+          echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          find "$bundle_root" -type f | sort
 
       - name: sign all bundles + SHA256SUMS
         env:
@@ -119,43 +263,46 @@ jobs:
           VANER_RELEASE_GPG_FINGERPRINT: ${{ secrets.VANER_RELEASE_GPG_FINGERPRINT }}
         run: |
           chmod +x scripts/ci/sign-artifacts.sh
-          ./scripts/ci/sign-artifacts.sh "${{ steps.collect.outputs.bundle_root }}"
+          ./scripts/ci/sign-artifacts.sh "${{ steps.stage.outputs.bundle_root }}"
 
       - name: verify signatures before any upload
         run: |
           chmod +x scripts/ci/verify-artifacts.sh
-          ./scripts/ci/verify-artifacts.sh "${{ steps.collect.outputs.bundle_root }}"
+          ./scripts/ci/verify-artifacts.sh "${{ steps.stage.outputs.bundle_root }}"
 
-      # Tauri v2 writes a <bundle>.sig per AppImage but leaves latest.json
-      # assembly to the release workflow. Compose it from the .sig content
-      # so tauri-plugin-updater can verify offline.
-      - name: compose latest.json updater manifest
+      - name: compose latest.json updater manifest (linux + windows)
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         id: manifest
         run: |
           set -euo pipefail
-          sig_path=$(find "${{ steps.collect.outputs.bundle_root }}/appimage" \
-                     -maxdepth 1 -name "*.AppImage.sig" -print -quit)
-          if [[ -z "$sig_path" ]]; then
-            echo "::error::Tauri did not produce an AppImage .sig — check TAURI_SIGNING_PRIVATE_KEY"
-            exit 1
-          fi
-          sig_content=$(tr -d '\n' < "$sig_path")
-          app_name=$(basename "${{ steps.collect.outputs.app_path }}")
+          bundle_root="${{ steps.stage.outputs.bundle_root }}"
+          app_sig=$(find "$bundle_root/appimage" -maxdepth 1 -name "*.AppImage.sig" -print -quit)
+          win_sig=$(find "$bundle_root/nsis" -maxdepth 1 -name "*.nsis.zip.sig" -print -quit)
+          [[ -n "$app_sig" ]] || { echo "::error::missing AppImage .sig"; exit 1; }
+          [[ -n "$win_sig" ]] || { echo "::error::missing NSIS .nsis.zip.sig"; exit 1; }
+          app_sig_content=$(tr -d '\n' < "$app_sig")
+          win_sig_content=$(tr -d '\n' < "$win_sig")
+          app_name=$(basename "${{ steps.stage.outputs.app_path }}")
+          zip_name=$(basename "${{ steps.stage.outputs.zip_path }}")
           version="${GITHUB_REF_NAME#v}"
           pub_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${app_name}"
-          out="${{ steps.collect.outputs.bundle_root }}/latest.json"
+          app_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${app_name}"
+          win_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${zip_name}"
+          out="$bundle_root/latest.json"
           python3 -c "
-          import json, sys
+          import json
           print(json.dumps({
               'version': '${version}',
               'pub_date': '${pub_date}',
               'notes': 'See the v${version} release notes at https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}',
               'platforms': {
                   'linux-x86_64': {
-                      'signature': '''${sig_content}''',
-                      'url': '${url}'
+                      'signature': '''${app_sig_content}''',
+                      'url': '${app_url}'
+                  },
+                  'windows-x86_64': {
+                      'signature': '''${win_sig_content}''',
+                      'url': '${win_url}'
                   }
               }
           }, indent=2))" > "$out"
@@ -167,18 +314,22 @@ jobs:
         uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2
         with:
           files: |
-            ${{ steps.collect.outputs.deb_path }}
-            ${{ steps.collect.outputs.deb_path }}.asc
-            ${{ steps.collect.outputs.app_path }}
-            ${{ steps.collect.outputs.app_path }}.asc
-            ${{ steps.collect.outputs.bundle_root }}/SHA256SUMS
-            ${{ steps.collect.outputs.bundle_root }}/SHA256SUMS.asc
+            ${{ steps.stage.outputs.deb_path }}
+            ${{ steps.stage.outputs.deb_path }}.asc
+            ${{ steps.stage.outputs.app_path }}
+            ${{ steps.stage.outputs.app_path }}.asc
+            ${{ steps.stage.outputs.exe_path }}
+            ${{ steps.stage.outputs.exe_path }}.asc
+            ${{ steps.stage.outputs.zip_path }}
+            ${{ steps.stage.outputs.zip_path }}.asc
+            ${{ steps.stage.outputs.bundle_root }}/SHA256SUMS
+            ${{ steps.stage.outputs.bundle_root }}/SHA256SUMS.asc
             ${{ steps.manifest.outputs.latest_json_path }}
             scripts/release-key.asc
           generate_release_notes: true
           fail_on_unmatched_files: true
 
-      # ----- apt repo publish (gh-pages) --------------------------------
+      # ----- apt repo publish (gh-pages) — Linux .deb only --------------
       - name: checkout gh-pages
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
@@ -210,10 +361,8 @@ jobs:
           VANER_RELEASE_GPG_FINGERPRINT: ${{ secrets.VANER_RELEASE_GPG_FINGERPRINT }}
         run: |
           chmod +x scripts/ci/build-apt-repo.sh
-          # .nojekyll so GH Pages serves directories verbatim
-          # (dists/, pool/ have leading dots GH Pages would mangle).
           touch gh-pages/.nojekyll
-          ./scripts/ci/build-apt-repo.sh gh-pages "${{ steps.collect.outputs.deb_path }}"
+          ./scripts/ci/build-apt-repo.sh gh-pages "${{ steps.stage.outputs.deb_path }}"
 
       - name: commit + push gh-pages
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
@@ -230,6 +379,6 @@ jobs:
       - name: dry-run notice
         if: github.event_name == 'workflow_dispatch'
         run: |
-          echo "::notice::Dry run complete — artifacts built + signed + verified."
+          echo "::notice::Dry run complete — Linux + Windows artifacts built + signed + verified."
           echo "Skipped: GitHub Release upload, apt-repo publish."
-          ls -la "${{ steps.collect.outputs.bundle_root }}"
+          ls -la "${{ steps.stage.outputs.bundle_root }}"

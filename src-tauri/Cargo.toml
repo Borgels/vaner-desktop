@@ -1,11 +1,11 @@
 [package]
 name = "vaner-desktop"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Linux desktop companion for the Vaner predictive-context engine."
+description = "Cross-platform (Linux + Windows) desktop companion for the Vaner predictive-context engine."
 license = "Apache-2.0"
-repository = "https://github.com/Borgels/vaner-desktop-linux"
+repository = "https://github.com/Borgels/vaner-desktop"
 
 [lib]
 # Tauri v2 exposes the app as both a library (so mobile targets can
@@ -25,8 +25,9 @@ tauri-plugin-updater = "2"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util", "fs"] }
 async-trait = "0.1"
+which = "7"
 
 # Shared contract layer. Pinned to the feat/vaner-contract-crate tag
 # until L1 lands on main; swap to `tag = "v0.8.x"` then.
