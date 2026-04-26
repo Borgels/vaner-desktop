@@ -22,9 +22,19 @@ pub fn show<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let window = app
         .get_webview_window(WINDOW_LABEL)
         .ok_or(tauri::Error::WindowNotFound)?;
-    // Anchor to tray — falls back gracefully when the compositor
-    // refuses the request (typical on GNOME/Wayland).
-    let _ = window.move_window(Position::TrayCenter);
+    // Anchor to tray. `move_window(TrayCenter)` panics — does not
+    // return Err — when the positioner plugin's tray-bounds cache is
+    // empty (e.g. on launch via the menu before any tray event has
+    // fired). Catch the panic and fall back to TopRight, which is
+    // also discoverable and never depends on cached bounds.
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = window.move_window(Position::TrayCenter);
+    }))
+    .or_else(|_| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = window.move_window(Position::TopRight);
+        }))
+    });
     window.show()?;
     window.set_focus()?;
     Ok(())
