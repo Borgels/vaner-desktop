@@ -38,7 +38,7 @@ pub struct AppState {
     pub engine: Arc<HttpEngineClient>,
     /// Handle to the SSE background task; kept so the app can abort
     /// on shutdown / reconnection.
-    pub sse_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    pub sse_handle: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
 }
 
 impl Default for AppState {
