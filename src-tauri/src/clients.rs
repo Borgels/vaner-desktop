@@ -90,7 +90,10 @@ fn resolve_vaner_bin() -> Result<String, String> {
         .output()
         .map_err(|e| format!("could not invoke `which vaner`: {e}"))?;
     if !output.status.success() {
-        return Err("Vaner binary not found on PATH. Install Vaner via vaner.ai/install or set $VANER_BIN.".into());
+        return Err(
+            "Vaner binary not found on PATH. Install Vaner via vaner.ai/install or set $VANER_BIN."
+                .into(),
+        );
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }

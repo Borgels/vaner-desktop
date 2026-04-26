@@ -86,7 +86,8 @@ fn resolve_vaner_bin() -> Result<String, String> {
         .map_err(|e| format!("could not invoke `which vaner`: {e}"))?;
     if !output.status.success() {
         return Err(
-            "Vaner binary not found on PATH. Install Vaner via vaner.ai/install or set $VANER_BIN.".into(),
+            "Vaner binary not found on PATH. Install Vaner via vaner.ai/install or set $VANER_BIN."
+                .into(),
         );
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -172,7 +173,10 @@ fn build_questions() -> Vec<SetupQuestion> {
             choices: vec![
                 choice("writing", "Writing — drafting, editing, narrative"),
                 choice("research", "Research — surveys, deep reading, citations"),
-                choice("planning", "Planning — design docs, roadmaps, project layout"),
+                choice(
+                    "planning",
+                    "Planning — design docs, roadmaps, project layout",
+                ),
                 choice("support", "Support — answering questions, troubleshooting"),
                 choice("learning", "Learning — studying, exploring a new domain"),
                 choice("coding", "Coding — software development"),
@@ -214,8 +218,14 @@ fn build_questions() -> Vec<SetupQuestion> {
             choices: vec![
                 choice("local_only", "Local only — never reach for cloud LLMs"),
                 choice("ask_first", "Ask first — confirm before any cloud call"),
-                choice("hybrid_when_worth_it", "Hybrid — cloud when it's clearly worth it"),
-                choice("best_available", "Best available — use the best model for the job"),
+                choice(
+                    "hybrid_when_worth_it",
+                    "Hybrid — cloud when it's clearly worth it",
+                ),
+                choice(
+                    "best_available",
+                    "Best available — use the best model for the job",
+                ),
             ],
         },
         SetupQuestion {
@@ -226,7 +236,10 @@ fn build_questions() -> Vec<SetupQuestion> {
             choices: vec![
                 choice("minimal", "Minimal — barely ponder when idle"),
                 choice("normal", "Normal — moderate background pondering"),
-                choice("idle_more", "Idle-more — ponder broadly when the box is idle"),
+                choice(
+                    "idle_more",
+                    "Idle-more — ponder broadly when the box is idle",
+                ),
                 choice(
                     "deep_run_aggressive",
                     "Deep-Run-aggressive — happy to run overnight",
@@ -301,16 +314,16 @@ pub async fn setup_apply(payload: Value) -> Result<AppliedPolicy, String> {
             .ok_or_else(|| "setup recommend returned no bundle id".to_string())?
             .to_string()
     } else {
-        return Err(
-            "setup_apply requires either `answers` or `bundle_id` in payload".to_string()
-        );
+        return Err("setup_apply requires either `answers` or `bundle_id` in payload".to_string());
     };
 
     // ---- 2. Cloud-widening pre-flight. ------------------------------
     let widens = if confirm_widening {
         false
     } else {
-        cloud_posture_widens(&prospective_bundle_id).await.unwrap_or(false)
+        cloud_posture_widens(&prospective_bundle_id)
+            .await
+            .unwrap_or(false)
     };
 
     if widens {
@@ -392,7 +405,10 @@ pub async fn setup_apply(payload: Value) -> Result<AppliedPolicy, String> {
     let daemon = parsed
         .get("daemon")
         .and_then(|v| {
-            let reachable = v.get("reachable").and_then(|x| x.as_bool()).unwrap_or(false);
+            let reachable = v
+                .get("reachable")
+                .and_then(|x| x.as_bool())
+                .unwrap_or(false);
             let detail = v
                 .get("detail")
                 .and_then(|x| x.as_str())
@@ -482,12 +498,7 @@ fn posture_rank(posture: &str) -> i32 {
 #[tauri::command]
 pub async fn setup_status() -> Result<Value, String> {
     let repo_root = repo_root_arg();
-    let owned: Vec<String> = vec![
-        "show".into(),
-        "--json".into(),
-        "--path".into(),
-        repo_root,
-    ];
+    let owned: Vec<String> = vec!["show".into(), "--json".into(), "--path".into(), repo_root];
     let arg_refs: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
     // `setup show` exits 0 even with no [setup] section, so non-zero
     // here is a real error.
@@ -506,10 +517,7 @@ pub async fn policy_show() -> Result<Value, String> {
     let stdout = run_vaner_setup_json(&["show", "--json"], None, true).await?;
     let parsed: Value = serde_json::from_str(&stdout)
         .map_err(|e| format!("could not parse setup show output: {e}"))?;
-    Ok(parsed
-        .get("bundle")
-        .cloned()
-        .unwrap_or(Value::Null))
+    Ok(parsed.get("bundle").cloned().unwrap_or(Value::Null))
 }
 
 /// Best-effort kick to the daemon to reload `[setup]` / `[policy]`
