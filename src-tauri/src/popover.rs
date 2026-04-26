@@ -13,28 +13,21 @@
 //! the "Open Vaner" menu item.
 
 use tauri::{AppHandle, Manager, Runtime};
-use tauri_plugin_positioner::{Position, WindowExt};
 
 pub const WINDOW_LABEL: &str = "main";
 
-/// Show the popover, anchored to the tray icon when possible.
+/// Show the popover. Window-positioning anchoring (e.g.
+/// `tauri-plugin-positioner::Position::TrayCenter`) was tried and
+/// removed: the plugin panics with "Tray position not set" when its
+/// internal cache is empty, the panic survives `catch_unwind` only on
+/// the strict letter — the popover then refuses to surface anyway.
+/// Without explicit positioning, the window opens wherever the
+/// compositor places it (typically last-known or center-of-screen),
+/// which is acceptable for a borderless popover.
 pub fn show<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let window = app
         .get_webview_window(WINDOW_LABEL)
         .ok_or(tauri::Error::WindowNotFound)?;
-    // Anchor to tray. `move_window(TrayCenter)` panics — does not
-    // return Err — when the positioner plugin's tray-bounds cache is
-    // empty (e.g. on launch via the menu before any tray event has
-    // fired). Catch the panic and fall back to TopRight, which is
-    // also discoverable and never depends on cached bounds.
-    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = window.move_window(Position::TrayCenter);
-    }))
-    .or_else(|_| {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = window.move_window(Position::TopRight);
-        }))
-    });
     window.show()?;
     window.set_focus()?;
     Ok(())
