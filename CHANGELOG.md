@@ -2,6 +2,108 @@
 
 ## [Unreleased]
 
+### Changed (0.2.2 — full popover redesign matching macOS)
+
+This release rebuilds the popover to match the SwiftUI sibling
+1:1. Same data plumbing (Tauri commands, stores, contract types,
+SSE flow), entirely new UI on top.
+
+#### Bug fixes from 0.2.1 smoke test (WS0)
+- **NVIDIA grey-window**: `WEBKIT_DISABLE_DMABUF_RENDERER=1` +
+  `WEBKIT_DISABLE_COMPOSITING_MODE=1` are set from `main.rs` before
+  Tauri boots. Forces a CPU paint that always works on NVIDIA
+  proprietary drivers (was rendering a blank grey rect on Ubuntu
+  24.04 GNOME/X11). Power users on Intel/AMD can override via env.
+- **Tray-anchoring panic**: `popover::show` now wraps
+  `move_window(TrayCenter)` in `catch_unwind` with a `TopRight`
+  fallback. The positioner plugin panics — does not return Err —
+  when its tray-bounds cache is empty (e.g. Open-Vaner from menu
+  before any tray click). The `on_tray_event` hook in `tray.rs`
+  populates the cache reliably; the catch_unwind is defense in depth.
+- **Pause defer**: tray Pause item is disabled until the daemon
+  ships `POST /engine/pause`.
+
+#### Design system (WS1)
+- `src/lib/tokens.css` is now the canonical 136-line file from the
+  Vaner Control handoff package — single source of truth for colors,
+  type scale, radii, shadows, animations. Light-mode overrides
+  vendored but unwired (v0.3.0).
+- Three OFL-licensed fonts (Space Grotesk variable, JetBrains Mono
+  variable, Share Tech Mono regular) bundled at `static/fonts/`,
+  declared via `@font-face` in `app.css`. The popover never depends
+  on a remote font CDN.
+- Brand SVG marks copied into `src/lib/assets/brand/`. Tray PNG
+  rasterized from the official mono-white mark instead of the old
+  placeholder.
+
+#### Primitives (WS2)
+15 Svelte components ported 1:1 from
+`vaner-desktop-macos/vaner/Primitives/`: `VMark`, `VStateBadge`,
+`VMenuBarIcon`, `V1Kicker` / `V1Headline` / `V1Body`,
+`V1PrimaryButton` / `V1GhostButton` / `V1Slider`, `VContextCard`,
+`QuietShell`, `SourceGlyph`, `Spinner`, `VMenuRow`, `VSectionLabel`.
+Storyboard route at `/dev/primitives/` renders all 15 in isolation.
+
+#### State machine (WS3)
+- `src/lib/state/types.ts` mirrors the macOS `VanerState` enum as a
+  12-variant discriminated union.
+- `src/lib/state/reducer.ts` ports `StateReducer.swift` line-by-line
+  (precedence: engine reachability → permissions → connected sources
+  → indexing learning → 0.8.0 predictions → reactive prepared → fall
+  through to watching).
+- 12/12 Vitest fixtures passing (`pnpm test`).
+- Five new stub stores feed the reducer; the reducer is permissive
+  and falls through to safe states when daemon endpoints are missing.
+
+#### Popover state views (WS4)
+12 components under `src/lib/components/popover-states/`:
+EngineMissing, NotInstalled, InstalledNotConnected, Learning,
+Watching, Prepared, Attention, PermissionNeeded, NoActiveAgent,
+ActivePredictions, Error, Idle. Each wraps QuietShell + composes
+the new primitives. `src/routes/+page.svelte` is a thin switch
+on `\$vanerState.kind`. Storyboard at `/dev/states/?kind=…` renders
+any state in isolation.
+
+#### Companion window (WS5)
+Second Tauri window (820×560 min) opened on demand from the popover
+footer's Details button or the tray's `Show Companion…` /
+`Preferences…` items. Three-column layout (200px sidebar · center
+pane · optional 260px right timeline when Prepared is active). Seven
+panes: Prepared, Sources, Agents, Models, Engine, Preferences,
+Diagnostics. Existing `MCPClientsPanel` + `EnginePanel` from
+`/preferences` are reused inside the Agents and Engine panes; data
+plumbing is unchanged.
+
+#### Onboarding window (WS6)
+Third Tauri window (720×540) opened automatically on first launch
+when `setup_status.completed_at` is null. Welcome screen with a
+breathing brand mark, the "one question" framing copy, and three
+state-color-coded bullets explaining what Vaner does. \"Get started\"
+navigates to the existing `/setup` wizard inside the same window;
+the wizard's apply step detects the onboarding window and calls
+`close_onboarding` on completion (instead of `goto('/')`).
+
+#### Live reducer inputs (WS8)
+- New `engine_status` Tauri command shells `vaner status --json`
+  and projects `cockpit.reachable` + `scenarios_ready` onto the
+  reducer's `EngineStatus` shape. Polled every 5s by
+  `startEngineStatusPolling` in the popover's layout.
+- New `detect_agents` Tauri command scans `/proc/*/comm` on Linux
+  for known agent binaries (cursor, claude, code, code-insiders,
+  zed, zeditor, continue) and returns `running_count` plus a static
+  suggestion list. Polled every 8s.
+- `setSourcesCount` overlays the source count derived from
+  `setup_status.completed_at` so the reducer can distinguish
+  `.installedNotConnected` from `.watching`.
+
+#### Deferred to v0.2.3
+- `/setup` wizard styling reskin — the wizard inherits the new
+  tokens automatically but still uses its older inline styles.
+- Real `prepared_list` + `blocked_sources` Tauri commands (daemon
+  endpoints not all shipped yet; reducer falls through cleanly).
+- TimelinePane right-column content (placeholder for now).
+- Light-mode toggle (overrides vendored, listener pending).
+
 ### Fixed (0.2.1 — startup panic on real Linux hosts)
 - **`sse_task::spawn`** used a bare `tokio::spawn` from inside the
   Tauri setup callback, which has no Tokio reactor in scope and

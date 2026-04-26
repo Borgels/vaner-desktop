@@ -80,7 +80,11 @@ pub async fn engine_status() -> Result<EngineStatusOut, String> {
         files_watched: scenarios_ready, // approximation; honest signal of "engine has read N things"
         sources_count: 0,                // populated by the Svelte side from setup_status
         uptime_minutes: 0,               // not exposed by vaner status today; v0.3 follow-up
-        indexing_kind: if reachable { "idle".into() } else { "idle".into() },
+        // `vaner status --json` doesn't differentiate idle vs learning
+        // today; report idle and let the daemon's future SSE status
+        // events upgrade us. The reducer's .learning branch is wired
+        // and ready for the day this changes.
+        indexing_kind: "idle".into(),
         detail,
     })
 }
