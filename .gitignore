@@ -18,3 +18,44 @@ src-tauri/gen/
 .env
 .env.*
 !.env.example
+
+# Auto-generated ts-rs bindings (predev / prebuild hook regenerates).
+# The hand-mirrored types live as `types.ts`, `setup-types.ts`,
+# `card.ts` under src/lib/contract/ and stay committed — only the
+# files synced from vaner-contract's bindings/ output are ignored.
+/bindings/
+/src/lib/contract/AppliedPolicy.ts
+/src/lib/contract/BackgroundPosture.ts
+/src/lib/contract/CloudPosture.ts
+/src/lib/contract/ComposerEngagement.ts
+/src/lib/contract/ComputePosture.ts
+/src/lib/contract/DeepRunDefaults.ts
+/src/lib/contract/DetectedModel.ts
+/src/lib/contract/EngineStatus.ts
+/src/lib/contract/EtaBucket.ts
+/src/lib/contract/HardwareProfile.ts
+/src/lib/contract/HardwareTier.ts
+/src/lib/contract/HypothesisType.ts
+/src/lib/contract/PolicyConfig.ts
+/src/lib/contract/PredictedPrompt.ts
+/src/lib/contract/PredictionArtifacts.ts
+/src/lib/contract/PredictionRun.ts
+/src/lib/contract/PredictionSource.ts
+/src/lib/contract/PredictionSpec.ts
+/src/lib/contract/Priority.ts
+/src/lib/contract/Provenance.ts
+/src/lib/contract/Readiness.ts
+/src/lib/contract/Resolution.ts
+/src/lib/contract/ResolutionAlternative.ts
+/src/lib/contract/ResolutionEvidence.ts
+/src/lib/contract/ScenarioCounts.ts
+/src/lib/contract/SelectionResult.ts
+/src/lib/contract/SetupAnswers.ts
+/src/lib/contract/SetupConfig.ts
+/src/lib/contract/SetupQuestion.ts
+/src/lib/contract/SetupQuestionOption.ts
+/src/lib/contract/Specificity.ts
+/src/lib/contract/VanerPolicyBundle.ts
+/src/lib/contract/VanerState.ts
+/src/lib/contract/WorkStyle.ts
+/src/lib/contract/serde_json/
