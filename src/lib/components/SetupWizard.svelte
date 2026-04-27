@@ -3,27 +3,31 @@
   onboarding window (/onboarding) and the in-app re-runnable wizard
   route (/setup).
 
-  Format: one focused slide per question, vertically centered inside a
-  720×540 (or larger) container. Step dots at the top. Back / Next /
-  Skip controls at the bottom.
+  Two flows on shared slide indices:
 
-  Slides:
-    0  Welcome (brand + tagline)
-    1  Work styles    (multi-select chips)
-    2  Priority       (single-select chips)
-    3  Compute posture
-    4  Background posture
-    5  Recommendation review (bundle id, tier, "why this bundle?")
-    6  Apply + Done   (closing slide)
+    Default (fast):
+      0  Welcome
+      1  Work styles                       (multi-select chips)
+      4  Recommendation review + Apply     (preset card)
+      5  Done
+
+    Custom (Customize… button on slide 4):
+      0  Welcome
+      1  Work styles
+      2  Priority                          (single-select chips, 5 choices)
+      3  Energy                            (single-select; merges
+                                             compute_posture + background_posture)
+      4  Recommendation review + Apply
+      5  Done
 
   Cloud posture is intentionally NOT asked during onboarding. It needs
   API-key configuration the wizard doesn't perform, and cloud-LLM cost
   dynamics can sting users who don't know which provider Vaner would
   call. The wizard always submits `local_only`; users opt in via
-  Preferences (Companion → Preferences) where the API-key flow is
-  paired with the toggle. The widening dance below is dead code in the
-  default flow but kept as a safety net in case the recommended bundle
-  itself proposes a wider cloud_posture than the previous policy.
+  Preferences (Companion → Preferences). The widening dance below is
+  mostly dead code — kept as a safety net in case the recommended
+  bundle itself proposes a wider cloud_posture than the existing
+  policy.
 
   `onComplete` is called after a successful apply — the parent decides
   what that means (close the onboarding window, or goto('/') back to
@@ -69,17 +73,39 @@
   };
   const { onComplete, onSkip }: Props = $props();
 
-  const TOTAL_SLIDES = 7;
+  // Slide indices (shared by both flows; default skips 2 + 3):
+  //   0 Welcome · 1 Work styles · 2 Priority · 3 Energy ·
+  //   4 Recommendation review + Apply · 5 Done
+  const TOTAL_SLIDES = 6;
   let slide = $state(0);
+
+  // The wizard starts in the *default* (fast) flow. Clicking "Customize…"
+  // on the recommendation review slide flips this on and rewinds to
+  // slide 2 (Priority) so the user can fan out into the full question
+  // set. Once on, it stays on for the session.
+  let customMode = $state(false);
 
   let questions = $state<SetupQuestion[]>([]);
   let workStyles = $state<WorkStyle[]>(["mixed"]);
   let priority = $state<Priority>("balanced");
-  let computePosture = $state<ComputePosture>("balanced");
+  // Energy collapses (compute_posture, background_posture) into one
+  // user-facing question. Each value maps deterministically to a
+  // (compute, background) pair. The daemon enums never see "energy";
+  // we resolve this at submit time.
+  type Energy = "light" | "balanced" | "burst" | "use_machine";
+  let energy = $state<Energy>("balanced");
+  const ENERGY_TO_POSTURES: Record<
+    Energy,
+    { compute: ComputePosture; background: BackgroundPosture }
+  > = {
+    light: { compute: "light", background: "minimal" },
+    balanced: { compute: "balanced", background: "normal" },
+    burst: { compute: "balanced", background: "idle_more" },
+    use_machine: { compute: "available_power", background: "deep_run_aggressive" },
+  };
   // Cloud posture is hidden from the wizard — see header comment.
   // Hardcoded to `local_only`; cloud opt-in lives in Preferences.
   const CLOUD_POSTURE_DEFAULT: CloudPosture = "local_only";
-  let backgroundPosture = $state<BackgroundPosture>("normal");
   let recommendation = $state<SelectionResult | null>(null);
   let recommending = $state(false);
   let modelRecommendation = $state<ModelsRecommendedPayload | null>(null);
@@ -89,6 +115,27 @@
   let appliedBundleId = $state<string | null>(null);
 
   const hardware = $derived($setup.hardware);
+
+  // Trim the daemon's option lists to the wizard's intended set.
+  // The full enums stay valid on the daemon side — the in-app
+  // /setup re-runnable surface and Preferences both still expose
+  // every choice. The wizard hides the redundant ones.
+  const WORK_STYLE_KEEP = new Set<WorkStyle>([
+    "coding",
+    "writing",
+    "research",
+    "planning",
+    "support",
+    "learning",
+    "mixed",
+  ]);
+  const PRIORITY_KEEP = new Set<Priority>([
+    "balanced",
+    "speed",
+    "quality",
+    "privacy",
+    "cost",
+  ]);
 
   onMount(async () => {
     questions = await loadQuestions();
@@ -101,12 +148,13 @@
   }
 
   function answers(): SetupAnswers {
+    const postures = ENERGY_TO_POSTURES[energy];
     return {
       work_styles: workStyles.length === 0 ? ["mixed"] : workStyles,
       priority,
-      compute_posture: computePosture,
+      compute_posture: postures.compute,
       cloud_posture: CLOUD_POSTURE_DEFAULT,
-      background_posture: backgroundPosture,
+      background_posture: postures.background,
     };
   }
 
@@ -116,32 +164,46 @@
       : [...workStyles, v];
   }
 
+  async function loadRecommendations() {
+    recommending = true;
+    modelRecommending = true;
+    try {
+      const [sel, modelRec] = await Promise.all([
+        recommend(answers()),
+        loadModelRecommendation(workStyles),
+      ]);
+      recommendation = sel;
+      modelRecommendation = modelRec;
+      return sel != null;
+    } finally {
+      recommending = false;
+      modelRecommending = false;
+    }
+  }
+
   async function nextSlide() {
-    if (slide === 4) {
-      // Going from background-posture (slide 4) into Recommendation
-      // (slide 5) requires a network round-trip — fetch both the
-      // bundle selection AND the hardware-driven model recommendation
-      // in parallel so the preset card on slide 5 doesn't show a
-      // second spinner.
-      recommending = true;
-      modelRecommending = true;
-      try {
-        const [sel, modelRec] = await Promise.all([
-          recommend(answers()),
-          loadModelRecommendation(workStyles),
-        ]);
-        recommendation = sel;
-        modelRecommendation = modelRec;
-        if (recommendation) slide = 5;
-      } finally {
-        recommending = false;
-        modelRecommending = false;
+    // Slide 1 (Work styles): default flow skips Priority + Energy and
+    // goes straight to the Recommendation review (slide 4); Custom
+    // walks the full path.
+    if (slide === 1) {
+      if (customMode) {
+        slide = 2;
+        return;
       }
+      const ok = await loadRecommendations();
+      if (ok) slide = 4;
       return;
     }
-    if (slide === 5) {
-      // From Recommendation review → Apply slide.
-      slide = 6;
+    // Slide 3 (Energy, custom-only): same parallel-fetch transition into
+    // the Recommendation review.
+    if (slide === 3) {
+      const ok = await loadRecommendations();
+      if (ok) slide = 4;
+      return;
+    }
+    // Slide 4 (Recommendation review): Apply.
+    if (slide === 4) {
+      slide = 5;
       void doApply();
       return;
     }
@@ -149,7 +211,18 @@
   }
 
   function prevSlide() {
-    if (slide > 0) slide -= 1;
+    if (slide === 0) return;
+    // Default flow: from review (4) → Back lands on Work styles (1).
+    if (slide === 4 && !customMode) {
+      slide = 1;
+      return;
+    }
+    slide -= 1;
+  }
+
+  function enterCustomFromReview() {
+    customMode = true;
+    slide = 2;
   }
 
   async function doApply(confirmWidening = false) {
@@ -183,30 +256,68 @@
   const nextLabel = $derived(
     slide === 0
       ? "Get started"
-      : slide === 4
-        ? recommending
-          ? "Reading hardware…"
-          : "See recommendation"
-        : slide === 5
-          ? "Apply"
-          : "Continue",
+      : slide === 1
+        ? customMode
+          ? "Continue"
+          : recommending
+            ? "Reading hardware…"
+            : "See recommendation"
+        : slide === 3
+          ? recommending
+            ? "Reading hardware…"
+            : "See recommendation"
+          : slide === 4
+            ? "Apply"
+            : "Continue",
   );
   const nextDisabled = $derived(
     (slide === 1 && workStyles.length === 0) || recommending || applying,
   );
 
   // Build each question's choice list lazily so the chips can read
-  // `findChoiceLabel("work_styles", "coding")` style.
+  // `findChoiceLabel("work_styles", "coding")` style. The wizard
+  // filters the daemon's full option list down to the trimmed UI set
+  // (see WORK_STYLE_KEEP / PRIORITY_KEEP at the top).
   function choices(qid: string) {
     return getQuestion(qid)?.choices ?? [];
   }
+  function workStyleChoices() {
+    return choices("work_styles").filter((c) =>
+      WORK_STYLE_KEEP.has(c.value as WorkStyle),
+    );
+  }
+  function priorityChoices() {
+    return choices("priority").filter((c) => PRIORITY_KEEP.has(c.value as Priority));
+  }
+
+  // Energy choices are wizard-local — daemon does not have an "energy"
+  // enum. Hard-coded labels here stay close to the macOS sibling.
+  const ENERGY_CHOICES: Array<{ value: Energy; label: string; hint: string }> = [
+    { value: "light", label: "Light", hint: "Barely use the CPU/GPU." },
+    { value: "balanced", label: "Balanced", hint: "Work with what's idle (recommended)." },
+    { value: "burst", label: "Burst when idle", hint: "Run broadly while the box is idle." },
+    { value: "use_machine", label: "Use this machine", hint: "Cranked — happy to ponder overnight." },
+  ];
+
+  // Step dot count is mode-aware so the dots reflect the actual flow
+  // length the user is walking through.
+  const dotCount = $derived(customMode ? 6 : 4);
+  // Visible-position-of-current-slide for the dots header.
+  const dotIndex = $derived.by(() => {
+    if (customMode) return slide;
+    // Default flow only renders slides 0, 1, 4, 5 — collapse the gap.
+    if (slide <= 1) return slide;
+    if (slide === 4) return 2;
+    if (slide >= 5) return 3;
+    return slide;
+  });
 </script>
 
 <div class="wizard">
-  <!-- Step indicator -->
+  <!-- Step indicator (mode-aware: default = 4 dots, custom = 6 dots). -->
   <header class="dots">
-    {#each Array.from({ length: TOTAL_SLIDES }) as _, i (i)}
-      <span class="dot" class:active={slide >= i} class:current={slide === i}></span>
+    {#each Array.from({ length: dotCount }) as _, i (i)}
+      <span class="dot" class:active={dotIndex >= i} class:current={dotIndex === i}></span>
     {/each}
   </header>
 
@@ -218,18 +329,18 @@
         <V1Kicker text="Welcome" />
         <h1>A quiet companion that thinks ahead.</h1>
         <p class="lead">
-          Five quick questions, then Vaner picks a profile that matches your
-          machine and how you work. Reversible from Preferences any time.
+          One question, then Vaner sizes your machine and picks a
+          profile to match. Tweakable from Preferences any time.
         </p>
       </section>
     {:else if slide === 1}
       <!-- 1 · Work styles -->
       <section class="slide">
-        <V1Kicker text={`Question 1 of 4`} />
+        <V1Kicker text={customMode ? "Question 1 of 3" : "What kind of work?"} />
         <h1>{getQuestion("work_styles")?.prompt ?? "What kinds of work?"}</h1>
         <p class="lead">Pick all that apply.</p>
         <div class="chips multi">
-          {#each choices("work_styles") as c (c.value)}
+          {#each workStyleChoices() as c (c.value)}
             <button
               type="button"
               class="chip"
@@ -245,12 +356,12 @@
         </div>
       </section>
     {:else if slide === 2}
-      <!-- 2 · Priority -->
+      <!-- 2 · Priority (custom-mode only) -->
       <section class="slide">
-        <V1Kicker text={`Question 2 of 4`} />
+        <V1Kicker text="Question 2 of 3" />
         <h1>{getQuestion("priority")?.prompt ?? "What matters most?"}</h1>
         <div class="chips single">
-          {#each choices("priority") as c (c.value)}
+          {#each priorityChoices() as c (c.value)}
             <button
               type="button"
               class="chip"
@@ -264,49 +375,33 @@
         </div>
       </section>
     {:else if slide === 3}
-      <!-- 3 · Compute posture -->
+      <!-- 3 · Energy (custom-mode only; merges compute + background) -->
       <section class="slide">
-        <V1Kicker text={`Question 3 of 4`} />
-        <h1>{getQuestion("compute_posture")?.prompt ?? "How hard should Vaner work?"}</h1>
+        <V1Kicker text="Question 3 of 3" />
+        <h1>How hard should Vaner work?</h1>
+        <p class="lead">
+          One knob covering both foreground compute and idle-time
+          pondering. Pick a wider setting in Preferences if you want
+          them split apart.
+        </p>
         <div class="chips single">
-          {#each choices("compute_posture") as c (c.value)}
+          {#each ENERGY_CHOICES as c (c.value)}
             <button
               type="button"
               class="chip"
-              class:on={computePosture === c.value}
-              onclick={() => (computePosture = c.value as ComputePosture)}
+              class:on={energy === c.value}
+              onclick={() => (energy = c.value)}
             >
               <span>{c.label}</span>
-              {#if c.hint}<span class="hint">{c.hint}</span>{/if}
+              <span class="hint">{c.hint}</span>
             </button>
           {/each}
         </div>
       </section>
     {:else if slide === 4}
-      <!-- 4 · Background posture (cloud-posture intentionally NOT asked
-           during onboarding — see CLOUD_POSTURE_DEFAULT comment in script;
-           opt-in lives in Preferences, paired with API-key setup) -->
-      <section class="slide">
-        <V1Kicker text={`Question 4 of 4`} />
-        <h1>{getQuestion("background_posture")?.prompt ?? "How busy should Vaner be in the background?"}</h1>
-        <div class="chips single">
-          {#each choices("background_posture") as c (c.value)}
-            <button
-              type="button"
-              class="chip"
-              class:on={backgroundPosture === c.value}
-              onclick={() => (backgroundPosture = c.value as BackgroundPosture)}
-            >
-              <span>{c.label}</span>
-              {#if c.hint}<span class="hint">{c.hint}</span>{/if}
-            </button>
-          {/each}
-        </div>
-      </section>
-    {:else if slide === 5}
-      <!-- 5 · Recommendation review -->
+      <!-- 4 · Recommendation review + Apply -->
       <section class="slide review">
-        <V1Kicker text="Recommended bundle" color="var(--vd-amber)" />
+        <V1Kicker text="Recommended for your machine" color="var(--vd-amber)" />
         {#if recommendation}
           <h1>{recommendation.bundle.label}</h1>
           <p class="bundle-desc">{recommendation.bundle.description}</p>
@@ -324,12 +419,17 @@
             </ul>
           {/if}
           <RecommendedPresetCard payload={modelRecommendation} loading={modelRecommending} />
+          {#if !customMode}
+            <button type="button" class="customize-link" onclick={enterCustomFromReview}>
+              Customize…
+            </button>
+          {/if}
         {:else}
           <div class="loading"><Spinner size={20} /><span>Picking a bundle…</span></div>
         {/if}
       </section>
     {:else}
-      <!-- 6 · Apply / Done. Widening branch is mostly dead code now
+      <!-- 5 · Apply / Done. Widening branch is mostly dead code now
            that the onboarding wizard always submits local_only — but
            kept as a safety net in case the recommended bundle itself
            has a wider local_cloud_posture than the previous policy. -->
@@ -344,7 +444,7 @@
           </p>
           <div class="actions inline">
             <V1PrimaryButton title="Allow widening" tint="var(--vd-amber)" onclick={() => doApply(true)} />
-            <V1GhostButton title="Keep local-only" onclick={() => { widening = null; slide = 5; }} />
+            <V1GhostButton title="Keep local-only" onclick={() => { widening = null; slide = 4; }} />
           </div>
         {:else if applying}
           <div class="loading"><Spinner size={20} /><span>Saving…</span></div>
@@ -367,13 +467,13 @@
   <footer class="ctl">
     <V1GhostButton title="Skip for now" onclick={() => onSkip()} />
     <span class="spacer"></span>
-    {#if slide > 0 && slide < 7}
+    {#if slide > 0 && slide < TOTAL_SLIDES - 1}
       <V1GhostButton title="Back" onclick={prevSlide} disabled={recommending || applying} />
     {/if}
-    {#if slide < 7}
+    {#if slide < TOTAL_SLIDES - 1}
       <V1PrimaryButton
         title={nextLabel}
-        tint={slide === 6 ? "var(--vd-amber)" : undefined}
+        tint={slide === 4 ? "var(--vd-amber)" : undefined}
         disabled={nextDisabled}
         onclick={nextSlide}
       />
@@ -546,6 +646,21 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+  .customize-link {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 8px 0 0;
+    color: var(--vd-fg-2);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    align-self: flex-start;
+  }
+  .customize-link:hover {
+    color: var(--vd-fg-1);
+    text-decoration: underline;
   }
   .reasons li {
     display: flex;
