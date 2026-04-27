@@ -70,7 +70,11 @@
   let workStyles = $state<WorkStyle[]>(["mixed"]);
   let priority = $state<Priority>("balanced");
   let computePosture = $state<ComputePosture>("balanced");
-  let cloudPosture = $state<CloudPosture>("ask_first");
+  // Default to `local_only` — the safe anchor. Users opt in to cloud
+  // posture explicitly. Avoids the "I didn't realise it was hitting an
+  // API" surprise + cost-runaway risk for new users who don't know
+  // which provider Vaner would call.
+  let cloudPosture = $state<CloudPosture>("local_only");
   let backgroundPosture = $state<BackgroundPosture>("normal");
   let recommendation = $state<SelectionResult | null>(null);
   let recommending = $state(false);
@@ -266,7 +270,12 @@
       <!-- 4 · Cloud posture -->
       <section class="slide">
         <V1Kicker text={`Question 4 of 5`} />
-        <h1>{getQuestion("cloud_posture")?.prompt ?? "Can Vaner use cloud models?"}</h1>
+        <h1>{getQuestion("cloud_posture")?.prompt ?? "Should Vaner ever reach for cloud LLMs?"}</h1>
+        <p class="lead">
+          Local-only is the safe default — Vaner runs entirely on your
+          machine and never calls a paid API. Pick a higher tier only if
+          you have your own keys and want the option.
+        </p>
         <div class="chips single">
           {#each choices("cloud_posture") as c (c.value)}
             <button
