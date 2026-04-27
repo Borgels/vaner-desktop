@@ -409,31 +409,45 @@
   .slide-stage {
     flex: 1 1 auto;
     display: flex;
-    align-items: center;
+    /* Top-align so longer slides (e.g. 8-option work_styles) don't
+       push their h1 above the dots row. flex-start prevents the
+       overlap; overflow-y: auto lets the slide scroll if the content
+       still doesn't fit (rare). */
+    align-items: flex-start;
     justify-content: center;
-    overflow: hidden;
-    padding: 8px 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px 0 12px;
     min-height: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--vd-line) transparent;
+  }
+  .slide-stage::-webkit-scrollbar {
+    width: 6px;
+  }
+  .slide-stage::-webkit-scrollbar-thumb {
+    background: var(--vd-line);
+    border-radius: 3px;
   }
   .slide {
     max-width: 540px;
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
   }
   .slide.welcome,
   .slide.done {
-    align-items: flex-start;
-    gap: 16px;
+    gap: 14px;
+    margin-top: 8px;
   }
   .slide h1 {
-    margin: 4px 0 0;
+    margin: 2px 0 0;
     font-family: var(--vd-font);
-    font-size: 26px;
+    font-size: 22px;
     font-weight: 500;
-    line-height: 1.2;
-    letter-spacing: -0.018em;
+    line-height: 1.22;
+    letter-spacing: -0.014em;
     color: var(--vd-fg-1);
   }
   .slide .lead {
@@ -448,9 +462,26 @@
   .chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 6px;
+    gap: 6px;
+    margin-top: 4px;
   }
+  /* Multi-select (work_styles, 8 options) — pill-style chips that
+     pack horizontally. The hint line is hidden on multi to keep the
+     chip compact; macOS shows just the label on this question too. */
+  .chips.multi {
+    flex-direction: row;
+  }
+  .chips.multi .chip {
+    flex: 0 0 auto;
+    padding: 7px 12px;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+  .chips.multi .chip .hint {
+    display: none;
+  }
+  /* Single-select (priority, postures — 3-4 options each) — full-width
+     stacked rows with the descriptive hint visible. */
   .chips.single {
     flex-direction: column;
     align-items: stretch;
@@ -460,19 +491,16 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 2px;
-    padding: 10px 14px;
+    padding: 9px 12px;
     background: var(--vd-bg-1);
     border: 0.5px solid var(--vd-line);
-    border-radius: var(--vd-r-card);
+    border-radius: var(--vd-r-chip);
     color: var(--vd-fg-1);
     font-family: var(--vd-font);
     font-size: 13px;
     cursor: pointer;
     text-align: left;
     transition: background 0.12s, border-color 0.12s;
-  }
-  .chips.multi .chip {
-    flex: 0 0 auto;
   }
   .chip:hover {
     background: var(--vd-bg-2);
