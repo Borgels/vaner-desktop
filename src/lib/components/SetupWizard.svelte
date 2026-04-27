@@ -12,15 +12,18 @@
     1  Work styles    (multi-select chips)
     2  Priority       (single-select chips)
     3  Compute posture
-    4  Cloud posture
-    5  Background posture
-    6  Recommendation review (bundle id, tier, "why this bundle?")
-    7  Apply + Done   (closing slide)
+    4  Background posture
+    5  Recommendation review (bundle id, tier, "why this bundle?")
+    6  Apply + Done   (closing slide)
 
-  The cloud-widening dance from the original setup wizard is preserved:
-  if setup_apply returns widens_cloud_posture=true with written=false,
-  the wizard pauses on slide 7 with a confirm prompt and re-calls with
-  confirm_cloud_widening=true on the user's OK.
+  Cloud posture is intentionally NOT asked during onboarding. It needs
+  API-key configuration the wizard doesn't perform, and cloud-LLM cost
+  dynamics can sting users who don't know which provider Vaner would
+  call. The wizard always submits `local_only`; users opt in via
+  Preferences (Companion → Preferences) where the API-key flow is
+  paired with the toggle. The widening dance below is dead code in the
+  default flow but kept as a safety net in case the recommended bundle
+  itself proposes a wider cloud_posture than the previous policy.
 
   `onComplete` is called after a successful apply — the parent decides
   what that means (close the onboarding window, or goto('/') back to
@@ -63,18 +66,16 @@
   };
   const { onComplete, onSkip }: Props = $props();
 
-  const TOTAL_SLIDES = 8;
+  const TOTAL_SLIDES = 7;
   let slide = $state(0);
 
   let questions = $state<SetupQuestion[]>([]);
   let workStyles = $state<WorkStyle[]>(["mixed"]);
   let priority = $state<Priority>("balanced");
   let computePosture = $state<ComputePosture>("balanced");
-  // Default to `local_only` — the safe anchor. Users opt in to cloud
-  // posture explicitly. Avoids the "I didn't realise it was hitting an
-  // API" surprise + cost-runaway risk for new users who don't know
-  // which provider Vaner would call.
-  let cloudPosture = $state<CloudPosture>("local_only");
+  // Cloud posture is hidden from the wizard — see header comment.
+  // Hardcoded to `local_only`; cloud opt-in lives in Preferences.
+  const CLOUD_POSTURE_DEFAULT: CloudPosture = "local_only";
   let backgroundPosture = $state<BackgroundPosture>("normal");
   let recommendation = $state<SelectionResult | null>(null);
   let recommending = $state(false);
@@ -99,7 +100,7 @@
       work_styles: workStyles.length === 0 ? ["mixed"] : workStyles,
       priority,
       compute_posture: computePosture,
-      cloud_posture: cloudPosture,
+      cloud_posture: CLOUD_POSTURE_DEFAULT,
       background_posture: backgroundPosture,
     };
   }
@@ -111,21 +112,21 @@
   }
 
   async function nextSlide() {
-    if (slide === 5) {
-      // Going from background-posture (slide 5) into Recommendation
-      // (slide 6) requires a network round-trip.
+    if (slide === 4) {
+      // Going from background-posture (slide 4) into Recommendation
+      // (slide 5) requires a network round-trip.
       recommending = true;
       try {
         recommendation = await recommend(answers());
-        if (recommendation) slide = 6;
+        if (recommendation) slide = 5;
       } finally {
         recommending = false;
       }
       return;
     }
-    if (slide === 6) {
+    if (slide === 5) {
       // From Recommendation review → Apply slide.
-      slide = 7;
+      slide = 6;
       void doApply();
       return;
     }
@@ -167,11 +168,11 @@
   const nextLabel = $derived(
     slide === 0
       ? "Get started"
-      : slide === 5
+      : slide === 4
         ? recommending
           ? "Reading hardware…"
           : "See recommendation"
-        : slide === 6
+        : slide === 5
           ? "Apply"
           : "Continue",
   );
@@ -209,7 +210,7 @@
     {:else if slide === 1}
       <!-- 1 · Work styles -->
       <section class="slide">
-        <V1Kicker text={`Question 1 of 5`} />
+        <V1Kicker text={`Question 1 of 4`} />
         <h1>{getQuestion("work_styles")?.prompt ?? "What kinds of work?"}</h1>
         <p class="lead">Pick all that apply.</p>
         <div class="chips multi">
@@ -231,7 +232,7 @@
     {:else if slide === 2}
       <!-- 2 · Priority -->
       <section class="slide">
-        <V1Kicker text={`Question 2 of 5`} />
+        <V1Kicker text={`Question 2 of 4`} />
         <h1>{getQuestion("priority")?.prompt ?? "What matters most?"}</h1>
         <div class="chips single">
           {#each choices("priority") as c (c.value)}
@@ -250,7 +251,7 @@
     {:else if slide === 3}
       <!-- 3 · Compute posture -->
       <section class="slide">
-        <V1Kicker text={`Question 3 of 5`} />
+        <V1Kicker text={`Question 3 of 4`} />
         <h1>{getQuestion("compute_posture")?.prompt ?? "How hard should Vaner work?"}</h1>
         <div class="chips single">
           {#each choices("compute_posture") as c (c.value)}
@@ -267,33 +268,11 @@
         </div>
       </section>
     {:else if slide === 4}
-      <!-- 4 · Cloud posture -->
+      <!-- 4 · Background posture (cloud-posture intentionally NOT asked
+           during onboarding — see CLOUD_POSTURE_DEFAULT comment in script;
+           opt-in lives in Preferences, paired with API-key setup) -->
       <section class="slide">
-        <V1Kicker text={`Question 4 of 5`} />
-        <h1>{getQuestion("cloud_posture")?.prompt ?? "Should Vaner ever reach for cloud LLMs?"}</h1>
-        <p class="lead">
-          Local-only is the safe default — Vaner runs entirely on your
-          machine and never calls a paid API. Pick a higher tier only if
-          you have your own keys and want the option.
-        </p>
-        <div class="chips single">
-          {#each choices("cloud_posture") as c (c.value)}
-            <button
-              type="button"
-              class="chip"
-              class:on={cloudPosture === c.value}
-              onclick={() => (cloudPosture = c.value as CloudPosture)}
-            >
-              <span>{c.label}</span>
-              {#if c.hint}<span class="hint">{c.hint}</span>{/if}
-            </button>
-          {/each}
-        </div>
-      </section>
-    {:else if slide === 5}
-      <!-- 5 · Background posture -->
-      <section class="slide">
-        <V1Kicker text={`Question 5 of 5`} />
+        <V1Kicker text={`Question 4 of 4`} />
         <h1>{getQuestion("background_posture")?.prompt ?? "How busy should Vaner be in the background?"}</h1>
         <div class="chips single">
           {#each choices("background_posture") as c (c.value)}
@@ -309,8 +288,8 @@
           {/each}
         </div>
       </section>
-    {:else if slide === 6}
-      <!-- 6 · Recommendation review -->
+    {:else if slide === 5}
+      <!-- 5 · Recommendation review -->
       <section class="slide review">
         <V1Kicker text="Recommended bundle" color="var(--vd-amber)" />
         {#if recommendation}
@@ -334,19 +313,22 @@
         {/if}
       </section>
     {:else}
-      <!-- 7 · Apply / Done -->
+      <!-- 6 · Apply / Done. Widening branch is mostly dead code now
+           that the onboarding wizard always submits local_only — but
+           kept as a safety net in case the recommended bundle itself
+           has a wider local_cloud_posture than the previous policy. -->
       <section class="slide done">
         {#if widening}
           <V1Kicker text="One more thing" color="var(--vd-amber)" />
-          <h1>Allow cloud-capable models?</h1>
+          <h1>The recommended bundle would widen cloud access.</h1>
           <p class="lead">
-            <strong>{widening.id}</strong> uses cloud models occasionally
-            for tasks where local quality is too low. You said
-            <em>{cloudPosture}</em> — confirm to widen.
+            <strong>{widening.id}</strong> proposes a wider cloud posture
+            than your current policy. The wizard normally submits
+            <em>local_only</em> — pick how to proceed.
           </p>
           <div class="actions inline">
-            <V1PrimaryButton title="Allow cloud" tint="var(--vd-amber)" onclick={() => doApply(true)} />
-            <V1GhostButton title="Keep my answer" onclick={() => { widening = null; slide = 4; }} />
+            <V1PrimaryButton title="Allow widening" tint="var(--vd-amber)" onclick={() => doApply(true)} />
+            <V1GhostButton title="Keep local-only" onclick={() => { widening = null; slide = 5; }} />
           </div>
         {:else if applying}
           <div class="loading"><Spinner size={20} /><span>Saving…</span></div>
