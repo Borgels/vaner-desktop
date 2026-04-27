@@ -87,15 +87,12 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let companion = MenuItem::with_id(app, ID_COMPANION, "Show Companion…", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let prefs = MenuItem::with_id(app, ID_PREFERENCES, "Preferences…", true, None::<&str>)?;
-    // Pause is wired in the Svelte UI but the daemon side is not yet
-    // implemented (CONTRACT.md `POST /engine/pause` is Tier B). Disable
-    // the menu item rather than ship a broken affordance.
-    let pause = MenuItem::with_id(app, ID_PAUSE, "Pause (coming soon)", false, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, ID_QUIT, "Quit", true, None::<&str>)?;
 
-    Menu::with_items(
-        app,
-        &[&open, &companion, &sep1, &prefs, &pause, &sep2, &quit],
-    )
+    // Pause is wired in the Svelte UI but the daemon side is not yet
+    // implemented (CONTRACT.md `POST /engine/pause` is Tier B). Hidden
+    // from the tray menu rather than shipped as a permanently-disabled
+    // affordance — re-add the MenuItem here when the endpoint lands.
+    Menu::with_items(app, &[&open, &companion, &sep1, &prefs, &sep2, &quit])
 }

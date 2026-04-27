@@ -4,6 +4,7 @@
   + handoff V1Empty.
 -->
 <script lang="ts">
+  import { invoke } from "@tauri-apps/api/core";
   import QuietShell from "$lib/components/primitives/QuietShell.svelte";
   import V1Kicker from "$lib/components/primitives/V1Kicker.svelte";
   import V1Headline from "$lib/components/primitives/V1Headline.svelte";
@@ -19,6 +20,13 @@
     { kind: "calendar", label: "Calendar", detail: "Today + next 7d" },
     { kind: "slack", label: "Slack", detail: "Threads you're in" },
   ] as const;
+
+  function openWizard() {
+    invoke("open_onboarding").catch(() => {});
+  }
+  function openSourcesPane() {
+    invoke("open_companion", { tab: "sources" }).catch(() => {});
+  }
 </script>
 
 <QuietShell markState="idle" stateLabel="Connect a source">
@@ -30,7 +38,7 @@
 
   <div class="grid">
     {#each sources as s (s.kind)}
-      <button type="button" class="cell">
+      <button type="button" class="cell" onclick={openWizard}>
         <SourceGlyph kind={s.kind} size={20} />
         <span class="cell-label">{s.label}</span>
         <span class="cell-detail">{s.detail}</span>
@@ -39,8 +47,8 @@
   </div>
 
   <div class="actions">
-    <V1PrimaryButton title="Browse all sources" />
-    <V1GhostButton title="Skip for now" />
+    <V1PrimaryButton title="Run setup wizard" onclick={openWizard} />
+    <V1GhostButton title="Open sources pane" onclick={openSourcesPane} />
   </div>
 
   {#snippet footer()}
