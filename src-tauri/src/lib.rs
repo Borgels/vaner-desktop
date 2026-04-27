@@ -114,6 +114,7 @@ pub fn run() {
             clients::clients_doctor,
             setup::setup_questions,
             setup::setup_recommend,
+            setup::models_recommended,
             setup::setup_apply,
             setup::setup_status,
             setup::policy_show,

@@ -145,6 +145,60 @@ export async function recommend(answers: SetupAnswers): Promise<SelectionResult 
   }
 }
 
+// Recommended-models payload — mirrors GET /models/recommended (Vaner v0.8.8 WS10.4).
+// We type loosely here because the daemon may pre-date 0.8.8 and the
+// Tauri command synthesises a fallback shape with most fields null.
+export type RecommendedModelEntry = {
+  id: string;
+  family: string;
+  params_b: number;
+  min_effective_gb_q4: number;
+  intent_lean: string[];
+  ollama_id: string | null;
+  huggingface_id: string | null;
+  context_length: number;
+  popularity_rank: number;
+  rank_source: string;
+};
+
+export type RecommendedBudget = {
+  effective_gb_q4: number;
+  accelerator: "nvidia" | "amd" | "apple_silicon" | "integrated" | "cpu_only" | "cluster";
+  gpu_count: number;
+  can_offload_to_cpu: boolean;
+  notes: string[];
+};
+
+export type ModelsRecommendedPayload = {
+  registry: {
+    schema_version: number | null;
+    generated_at: string | null;
+    generator: string;
+    model_count: number;
+    sources: Array<{ name: string; snapshot_at: string; note: string | null }>;
+  };
+  budget: RecommendedBudget | null;
+  selected: RecommendedModelEntry | null;
+  alternatives: RecommendedModelEntry[];
+};
+
+/** `vaner setup models-recommended --json` (Vaner 0.8.8+) — hardware
+ *  budget + the registry's pick, used by the Recommended-preset card.
+ *  Falls back gracefully when the daemon CLI is older. */
+export async function loadModelRecommendation(
+  workStyles: string[] = [],
+): Promise<ModelsRecommendedPayload | null> {
+  try {
+    const payload = await invoke<ModelsRecommendedPayload>("models_recommended", {
+      workStyles: workStyles.length === 0 ? null : workStyles.join(","),
+    });
+    return payload;
+  } catch (err) {
+    await patch(() => ({ lastError: stringErr(err) }));
+    return null;
+  }
+}
+
 export type ApplyArgs = {
   answers?: SetupAnswers;
   bundle_id?: string;

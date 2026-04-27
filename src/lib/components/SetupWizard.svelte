@@ -36,8 +36,10 @@
     loadQuestions,
     loadStatus,
     loadHardware,
+    loadModelRecommendation,
     recommend,
     apply,
+    type ModelsRecommendedPayload,
   } from "$lib/stores/setup.js";
   import { showToast } from "$lib/stores/toast.js";
   import VMark from "$lib/components/primitives/VMark.svelte";
@@ -45,6 +47,7 @@
   import V1PrimaryButton from "$lib/components/primitives/V1PrimaryButton.svelte";
   import V1GhostButton from "$lib/components/primitives/V1GhostButton.svelte";
   import Spinner from "$lib/components/primitives/Spinner.svelte";
+  import RecommendedPresetCard from "$lib/components/RecommendedPresetCard.svelte";
   import type {
     BackgroundPosture,
     CloudPosture,
@@ -79,6 +82,8 @@
   let backgroundPosture = $state<BackgroundPosture>("normal");
   let recommendation = $state<SelectionResult | null>(null);
   let recommending = $state(false);
+  let modelRecommendation = $state<ModelsRecommendedPayload | null>(null);
+  let modelRecommending = $state(false);
   let applying = $state(false);
   let widening = $state<{ id: string; reasons: string[] } | null>(null);
   let appliedBundleId = $state<string | null>(null);
@@ -114,13 +119,23 @@
   async function nextSlide() {
     if (slide === 4) {
       // Going from background-posture (slide 4) into Recommendation
-      // (slide 5) requires a network round-trip.
+      // (slide 5) requires a network round-trip — fetch both the
+      // bundle selection AND the hardware-driven model recommendation
+      // in parallel so the preset card on slide 5 doesn't show a
+      // second spinner.
       recommending = true;
+      modelRecommending = true;
       try {
-        recommendation = await recommend(answers());
+        const [sel, modelRec] = await Promise.all([
+          recommend(answers()),
+          loadModelRecommendation(workStyles),
+        ]);
+        recommendation = sel;
+        modelRecommendation = modelRec;
         if (recommendation) slide = 5;
       } finally {
         recommending = false;
+        modelRecommending = false;
       }
       return;
     }
@@ -308,6 +323,7 @@
               {/each}
             </ul>
           {/if}
+          <RecommendedPresetCard payload={modelRecommendation} loading={modelRecommending} />
         {:else}
           <div class="loading"><Spinner size={20} /><span>Picking a bundle…</span></div>
         {/if}
