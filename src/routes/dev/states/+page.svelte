@@ -17,6 +17,7 @@
   import ActivePredictions from "$lib/components/popover-states/ActivePredictions.svelte";
   import VanerError from "$lib/components/popover-states/Error.svelte";
   import Idle from "$lib/components/popover-states/Idle.svelte";
+  import Paused from "$lib/components/popover-states/Paused.svelte";
   import type { PreparedMoment, SourceRef } from "$lib/state/types.js";
 
   const STATES = [
@@ -31,6 +32,7 @@
     "noActiveAgent",
     "activePredictions",
     "error",
+    "paused",
     "idle",
   ] as const;
 
@@ -196,6 +198,8 @@
             incidentID: "VNR-7f2a",
           }}
         />
+      {:else if kind === "paused"}
+        <Paused queued={3} />
       {:else if kind === "idle"}
         <Idle />
       {:else}

@@ -159,6 +159,7 @@ export type VanerState =
   | { kind: "noActiveAgent"; pendingCount: number; suggestedLaunch: AgentSuggestion[] }
   | { kind: "activePredictions"; predictions: PredictedPrompt[] }
   | { kind: "error"; engine: EngineError }
+  | { kind: "paused"; queued: number }
   | { kind: "idle" };
 
 export type VanerStateKind = VanerState["kind"];

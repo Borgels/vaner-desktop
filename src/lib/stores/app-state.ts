@@ -10,7 +10,25 @@ import { showToast } from "./toast.js";
  * The Svelte UI subscribes to these stores and reacts — no direct
  * access to Tauri events from components.
  */
-export const isPaused = writable<boolean>(false);
+const PAUSE_KEY = "vaner.pref.paused";
+
+function loadPause(): boolean {
+  try {
+    return localStorage.getItem(PAUSE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export const isPaused = writable<boolean>(loadPause());
+isPaused.subscribe((p) => {
+  try {
+    localStorage.setItem(PAUSE_KEY, String(p));
+  } catch {
+    /* localStorage unavailable */
+  }
+});
+
 export const needsAppIndicator = writable<boolean>(false);
 
 let bootstrapped = false;

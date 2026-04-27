@@ -33,10 +33,16 @@ export interface ReducerInputs {
    *  to the macOS `PreviewData.noAgentSuggestions` constant; injected
    *  here so the reducer stays pure (no static-data import). */
   noAgentSuggestions: AgentSuggestion[];
+  /** Tray-menu Pause toggle. When true, the popover renders a calm
+   *  .paused state with a Resume button. Urgent states (error,
+   *  permissionNeeded, attention, engineMissing) still show through
+   *  so the user isn't silenced into a broken engine. */
+  paused: boolean;
 }
 
 export function reduce(i: ReducerInputs): VanerState {
-  // 1. Engine unreachable → .error
+  // 1. Engine unreachable → .error (overrides pause; the user needs
+  //    to know the engine is down even if they asked for quiet)
   if (!i.status.reachable) {
     return {
       kind: "error",
@@ -49,13 +55,28 @@ export function reduce(i: ReducerInputs): VanerState {
   }
 
   // 2. Any blocked sources (expired auth) → .permissionNeeded
+  //    (also overrides pause — auth needs the user)
   if (i.blockedSources.length > 0) {
     return { kind: "permissionNeeded", sources: i.blockedSources };
   }
 
   // 3. No sources configured → .installedNotConnected
+  //    (overrides pause — the user can't have meant to pause an
+  //    engine that hasn't started yet)
   if (!i.hasAnySource) {
     return { kind: "installedNotConnected" };
+  }
+
+  // 4. Paused: count anything in flight so the user knows what
+  //    Vaner is holding back, then short-circuit to .paused.
+  //    Comes after the urgent-3 states so an error during pause
+  //    still surfaces.
+  if (i.paused) {
+    const queued =
+      i.activePredictions.filter((p) => isAdoptable(p.run.readiness)).length +
+      (i.prepared.lead ? 1 : 0) +
+      i.prepared.supporting.length;
+    return { kind: "paused", queued };
   }
 
   // 4. Currently learning → .learning

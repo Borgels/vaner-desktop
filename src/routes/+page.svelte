@@ -20,6 +20,7 @@
   import ActivePredictions from "$lib/components/popover-states/ActivePredictions.svelte";
   import VanerError from "$lib/components/popover-states/Error.svelte";
   import Idle from "$lib/components/popover-states/Idle.svelte";
+  import Paused from "$lib/components/popover-states/Paused.svelte";
   import UpdateBanner from "$lib/components/UpdateBanner.svelte";
   import ToastStack from "$lib/components/ToastStack.svelte";
   import FirstRunGuidance from "$lib/components/FirstRunGuidance.svelte";
@@ -57,6 +58,8 @@
     <ActivePredictions predictions={$vanerState.predictions} />
   {:else if $vanerState.kind === "error"}
     <VanerError engine={$vanerState.engine} />
+  {:else if $vanerState.kind === "paused"}
+    <Paused queued={$vanerState.queued} />
   {:else}
     <Idle />
   {/if}

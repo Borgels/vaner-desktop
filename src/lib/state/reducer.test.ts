@@ -51,6 +51,7 @@ const baseInputs = (override: Partial<ReducerInputs> = {}): ReducerInputs => ({
   hasAnySource: true,
   activePredictions: [],
   noAgentSuggestions: [],
+  paused: false,
   ...override,
 });
 
@@ -223,5 +224,45 @@ describe("StateReducer precedence chain", () => {
     if (out.kind === "watching") {
       expect(out.silentHours).toBe(true);
     }
+  });
+
+  it("paused → .paused with queued count = supporting + lead + adoptable predictions", () => {
+    const out = reduce(
+      baseInputs({
+        paused: true,
+        prepared: { lead: aMoment("a"), supporting: [aMoment("b"), aMoment("c")], pendingWhenNoAgent: 0 },
+        activePredictions: [aPrediction("ready"), aPrediction("queued")],
+      }),
+    );
+    expect(out.kind).toBe("paused");
+    if (out.kind === "paused") {
+      // 1 ready prediction + 1 lead + 2 supporting; queued prediction filtered out.
+      expect(out.queued).toBe(4);
+    }
+  });
+
+  it("paused does NOT override .error (urgent state wins)", () => {
+    const out = reduce(
+      baseInputs({
+        paused: true,
+        status: reachableStatus({ reachable: false }),
+      }),
+    );
+    expect(out.kind).toBe("error");
+  });
+
+  it("paused does NOT override .permissionNeeded", () => {
+    const out = reduce(
+      baseInputs({
+        paused: true,
+        blockedSources: [blockedSrc()],
+      }),
+    );
+    expect(out.kind).toBe("permissionNeeded");
+  });
+
+  it("paused does NOT override .installedNotConnected (engine has nothing to pause yet)", () => {
+    const out = reduce(baseInputs({ paused: true, hasAnySource: false }));
+    expect(out.kind).toBe("installedNotConnected");
   });
 });
