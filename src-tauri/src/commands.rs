@@ -4,11 +4,33 @@
 //! method. Errors are converted to strings for the `invoke` boundary
 //! (Tauri serializes `Err` values as JSON).
 
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use vaner_contract::{EngineClient, EngineClientError, PredictedPrompt, stash_adopt};
 
 use crate::AppState;
+
+/// `Quit` from the companion sidebar (and any other "exit Vaner"
+/// affordance the UI surfaces). The companion's `window.close()`
+/// only hides the companion webview — it does not exit the app —
+/// which made the existing button look broken.
+#[tauri::command]
+pub fn app_quit(app: AppHandle) -> tauri::Result<()> {
+    app.exit(0);
+    Ok(())
+}
+
+/// Hide just the current window (the companion). Wired separately
+/// from `app_quit` so the sidebar can offer both behaviours: a
+/// "Close" affordance that hides the window and a "Quit" that
+/// terminates the app.
+#[tauri::command]
+pub fn window_hide(app: AppHandle, label: String) -> tauri::Result<()> {
+    if let Some(win) = app.get_webview_window(&label) {
+        win.hide()?;
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn active_predictions(

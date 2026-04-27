@@ -106,6 +106,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::active_predictions,
             commands::adopt_prediction,
+            commands::app_quit,
+            commands::window_hide,
             updater::install_update,
             clients::clients_detect,
             clients::clients_install,

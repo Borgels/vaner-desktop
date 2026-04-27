@@ -10,7 +10,8 @@
 //!     │  Show Companion… │  ← opens the companion window
 //!     ├──────────────────┤
 //!     │  Preferences…    │  ← opens companion window on Preferences pane
-//!     │  Pause           │  ← disabled until daemon ships POST /engine/pause
+//!     │  Pause / Resume  │  ← emits menu:toggle-pause; Svelte flips
+//!     │                  │    the isPaused store + .paused popover
 //!     ├──────────────────┤
 //!     │  Quit            │  ← app.exit(0)
 //!     └──────────────────┘
@@ -21,7 +22,7 @@
 //! TopRight fallback.
 
 use tauri::{
-    AppHandle, Runtime,
+    AppHandle, Emitter, Runtime,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
 };
@@ -61,9 +62,11 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                 let _ = companion::open_window(app, Some("preferences".into()));
             }
             ID_PAUSE => {
-                // Disabled in the menu; this branch should never fire.
-                // Left here so the match stays exhaustive over the IDs
-                // we own.
+                // Forward to the Svelte side. The popover's
+                // app-state store listens for `menu:toggle-pause`
+                // and flips the isPaused flag, which the reducer
+                // turns into the .paused popover state.
+                let _ = app.emit("menu:toggle-pause", ());
             }
             ID_QUIT => {
                 app.exit(0);
@@ -87,12 +90,16 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let companion = MenuItem::with_id(app, ID_COMPANION, "Show Companion…", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let prefs = MenuItem::with_id(app, ID_PREFERENCES, "Preferences…", true, None::<&str>)?;
+    // UI-level mute toggle. Daemon-side POST /engine/pause is still
+    // Tier B; today this just flips an isPaused flag the popover
+    // reducer reads to enter the .paused state. Re-wire to the
+    // engine endpoint when CONTRACT.md ships it.
+    let pause = MenuItem::with_id(app, ID_PAUSE, "Pause / Resume", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, ID_QUIT, "Quit", true, None::<&str>)?;
 
-    // Pause is wired in the Svelte UI but the daemon side is not yet
-    // implemented (CONTRACT.md `POST /engine/pause` is Tier B). Hidden
-    // from the tray menu rather than shipped as a permanently-disabled
-    // affordance — re-add the MenuItem here when the endpoint lands.
-    Menu::with_items(app, &[&open, &companion, &sep1, &prefs, &sep2, &quit])
+    Menu::with_items(
+        app,
+        &[&open, &companion, &sep1, &prefs, &pause, &sep2, &quit],
+    )
 }

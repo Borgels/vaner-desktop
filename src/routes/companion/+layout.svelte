@@ -7,6 +7,7 @@
 -->
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
@@ -84,7 +85,11 @@
     </div>
 
     <div class="sidebar__foot">
-      <VMenuRow title="Quit" onclick={() => window.close()} />
+      <VMenuRow
+        title="Close window"
+        onclick={() => invoke("window_hide", { label: "companion" })}
+      />
+      <VMenuRow title="Quit Vaner" onclick={() => invoke("app_quit")} />
     </div>
   </aside>
 
