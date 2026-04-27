@@ -35,9 +35,11 @@ pub fn open_window<R: Runtime>(app: &AppHandle<R>, tab: Option<String>) -> tauri
         return Ok(());
     }
 
-    // First-open: build the window. SvelteKit's static adapter renders
-    // /companion as a separate HTML file, so the WebviewUrl::App points
-    // straight at it. URL query carries the initial pane.
+    // SvelteKit's static adapter emits build/companion/index.html when
+    // /companion's +layout.ts sets trailingSlash='always'. Tauri loads
+    // /companion/ as the directory and the HTML lives at index.html
+    // inside; SvelteKit's router sees pathname '/companion/' and
+    // resolves it to the /companion route normally.
     let url = format!("companion/?tab={tab}");
     WebviewWindowBuilder::new(app, COMPANION_LABEL, WebviewUrl::App(url.into()))
         .title("Vaner")

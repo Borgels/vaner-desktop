@@ -59,3 +59,4 @@ src-tauri/gen/
 /src/lib/contract/VanerState.ts
 /src/lib/contract/WorkStyle.ts
 /src/lib/contract/serde_json/
+/.vaner/

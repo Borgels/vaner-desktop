@@ -17,6 +17,10 @@ pub fn open_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         return Ok(());
     }
 
+    // /onboarding's +layout.ts sets trailingSlash='always', so the
+    // static adapter emits build/onboarding/index.html. Loading
+    // "onboarding/" (with trailing slash) lets SvelteKit's router
+    // see pathname '/onboarding' and resolve it to the right route.
     WebviewWindowBuilder::new(app, ONBOARDING_LABEL, WebviewUrl::App("onboarding/".into()))
         .title("Welcome to Vaner")
         .inner_size(720.0, 540.0)
