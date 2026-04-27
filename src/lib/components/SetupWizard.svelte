@@ -418,7 +418,11 @@
               {/each}
             </ul>
           {/if}
-          <RecommendedPresetCard payload={modelRecommendation} loading={modelRecommending} />
+          <RecommendedPresetCard
+            payload={modelRecommendation}
+            loading={modelRecommending}
+            {hardware}
+          />
           {#if !customMode}
             <button type="button" class="customize-link" onclick={enterCustomFromReview}>
               Customize…

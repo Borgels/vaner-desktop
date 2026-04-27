@@ -2,28 +2,62 @@
   Recommended-preset card — the wizard's WS11 step that surfaces the
   daemon's hardware-driven model recommendation before apply.
 
-  Falls back gracefully when:
-   - The daemon CLI predates v0.8.8 (Tauri command returns a synthetic
-     empty payload — see setup.rs::models_recommended).
-   - The daemon ships v0.8.8 but the registry is empty (dev checkout
-     that has not run scripts/refresh_recommended_models.py).
+  Three rendering modes:
 
-  In both cases the card renders the budget (if known) plus a
-  "Vaner will pick a model from your local runtime when it starts"
-  line so the user knows the wizard isn't broken — just that the
-  recommendation pipeline isn't loaded yet.
+   1. Full payload (Vaner v0.8.8+ with non-empty registry): show
+      accelerator + working memory + selected model + alternatives.
+   2. Budget-only (Vaner v0.8.8 with empty registry — dev checkout
+      that hasn't run scripts/refresh_recommended_models.py): show
+      accelerator + memory but explain Vaner will pick at runtime.
+   3. CLI-unavailable / pre-0.8.8 daemon: the Tauri command's
+      synthetic fallback comes back with generator='desktop-fallback:
+      cli-unavailable'. Fall through to whatever the existing
+      hardware_profile probe knows so the card still surfaces the
+      tier + GPU rather than misleading "couldn't read this machine"
+      copy.
 -->
 <script lang="ts">
   import V1Kicker from "$lib/components/primitives/V1Kicker.svelte";
   import V1Body from "$lib/components/primitives/V1Body.svelte";
   import Spinner from "$lib/components/primitives/Spinner.svelte";
   import type { ModelsRecommendedPayload } from "$lib/stores/setup.js";
+  import type { HardwareProfile } from "$lib/contract/setup-types.js";
 
   type Props = {
     payload: ModelsRecommendedPayload | null;
     loading: boolean;
+    /** Hardware silhouette from the existing `hardware_profile` Tauri
+     *  command — used as a fallback when the daemon CLI is too old
+     *  to produce the budget payload. */
+    hardware?: HardwareProfile | null;
   };
-  const { payload, loading }: Props = $props();
+  const { payload, loading, hardware = null }: Props = $props();
+
+  // Detect the synthetic-fallback shape produced by setup.rs when the
+  // CLI doesn't support `models-recommended`. Distinguishes pre-0.8.8
+  // daemons from genuine empty registries.
+  const cliUnavailable = $derived(
+    payload?.registry?.generator === "desktop-fallback:cli-unavailable",
+  );
+
+  function tierLabel(tier: string | undefined): string {
+    switch (tier) {
+      case "high_performance": return "High-performance system";
+      case "capable": return "Capable system";
+      case "light": return "Lightweight machine";
+      default: return "Your machine";
+    }
+  }
+
+  function gpuLabel(gpu: string | undefined): string | null {
+    if (!gpu || gpu === "none") return null;
+    return {
+      nvidia: "NVIDIA GPU",
+      amd: "AMD GPU",
+      apple_silicon: "Apple Silicon",
+      integrated: "integrated graphics",
+    }[gpu] ?? null;
+  }
 
   const accelerator = $derived(payload?.budget?.accelerator ?? null);
   const acceleratorLabel = $derived.by(() => {
@@ -41,8 +75,14 @@
   const budgetGb = $derived(payload?.budget?.effective_gb_q4 ?? null);
   const gpuCount = $derived(payload?.budget?.gpu_count ?? null);
   const selected = $derived(payload?.selected ?? null);
-  const alternatives = $derived((payload?.alternatives ?? []).filter((m) => m.id !== selected?.id));
+  const alternatives = $derived(
+    (payload?.alternatives ?? []).filter((m: { id: string }) => m.id !== selected?.id),
+  );
   const registryEmpty = $derived((payload?.registry?.model_count ?? 0) === 0);
+
+  // True when we have NO budget payload AND no fallback hardware — the
+  // only case where we should claim hardware detection failed.
+  const trueHardwareUnknown = $derived(!payload?.budget && !hardware);
 </script>
 
 <section class="card">
@@ -50,12 +90,34 @@
 
   {#if loading}
     <div class="loading"><Spinner size={16} /><span>Reading hardware…</span></div>
-  {:else if !payload || !payload.budget}
+  {:else if trueHardwareUnknown}
     <h2 class="title">We couldn't read this machine.</h2>
     <V1Body
       muted
       text="Vaner will pick a model from your local runtime when it starts. You can swap it later in Companion → Models."
     />
+  {:else if !payload?.budget}
+    <!--
+      Budget unknown but we have a HardwareProfile from the existing
+      `hardware_profile` Tauri command. Surface what we know rather
+      than misleading the user that hardware detection failed.
+    -->
+    <h2 class="title">
+      {tierLabel(hardware?.tier)}{#if gpuLabel(hardware?.gpu)} · {gpuLabel(hardware?.gpu)}{/if}
+    </h2>
+    {#if hardware?.ram_gb}
+      <V1Body muted text={`${hardware.ram_gb} GB RAM${hardware.gpu_vram_gb ? ` · ${hardware.gpu_vram_gb} GB VRAM` : ""}`} />
+    {/if}
+    <p class="fallback">
+      {#if cliUnavailable}
+        Update Vaner to v0.8.8+ for hardware-tuned model recommendations.
+        For now the engine will pick a model from your local runtime
+        when it starts — swap later in Companion → Models.
+      {:else}
+        Vaner will pick a model from your local runtime when it starts.
+        You can swap it later in Companion → Models.
+      {/if}
+    </p>
   {:else}
     <h2 class="title">
       {#if acceleratorLabel}
