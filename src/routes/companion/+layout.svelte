@@ -13,7 +13,7 @@
   import VMark from "$lib/components/primitives/VMark.svelte";
   import VMenuRow from "$lib/components/primitives/VMenuRow.svelte";
   import VSectionLabel from "$lib/components/primitives/VSectionLabel.svelte";
-  import SourceGlyph from "$lib/components/primitives/SourceGlyph.svelte";
+  import NavGlyph from "$lib/components/primitives/NavGlyph.svelte";
   import ToastStack from "$lib/components/ToastStack.svelte";
 
   let { children } = $props();
@@ -21,17 +21,16 @@
   type Tab = {
     id: string;
     label: string;
-    glyph: string;
     showsTimeline?: boolean;
   };
   const tabs: Tab[] = [
-    { id: "prepared", label: "Prepared", glyph: "agent", showsTimeline: true },
-    { id: "sources", label: "Sources", glyph: "files" },
-    { id: "agents", label: "Agents", glyph: "code" },
-    { id: "models", label: "Models", glyph: "code" },
-    { id: "engine", label: "Engine", glyph: "files" },
-    { id: "preferences", label: "Preferences", glyph: "files" },
-    { id: "diagnostics", label: "Diagnostics", glyph: "code" },
+    { id: "prepared", label: "Prepared", showsTimeline: true },
+    { id: "sources", label: "Sources" },
+    { id: "agents", label: "Agents" },
+    { id: "models", label: "Models" },
+    { id: "engine", label: "Engine" },
+    { id: "preferences", label: "Preferences" },
+    { id: "diagnostics", label: "Diagnostics" },
   ];
 
   // Tab driven by ?tab= query string. Default to prepared.
@@ -78,7 +77,7 @@
           onclick={() => navigate(t.id)}
         >
           {#snippet icon()}
-            <SourceGlyph kind={t.glyph} size={14} dim={active !== t.id} />
+            <NavGlyph kind={t.id} size={14} dim={active !== t.id} />
           {/snippet}
         </VMenuRow>
       {/each}
