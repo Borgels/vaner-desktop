@@ -109,7 +109,10 @@ export interface PreparedWorkCard {
   badge: string;
   confidence_label: string;
   freshness_label: string;
+  freshness_state?: "fresh" | "recent" | "possibly_stale" | "stale" | string;
   target_label: string;
+  why_prepared?: string;
+  action_note?: string;
   evidence_count: number;
   created_at: number;
   updated_at: number;

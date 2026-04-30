@@ -10,7 +10,7 @@ let timer: ReturnType<typeof setInterval> | null = null;
 
 export async function refreshPreparedWork(): Promise<void> {
   try {
-    const cards = await invoke<PreparedWorkCard[]>("prepared_work", { limit: 8 });
+    const cards = await invoke<PreparedWorkCard[]>("prepared_work", { limit: 3 });
     set(cards);
   } catch (err) {
     console.warn("[vaner] prepared_work failed:", err);

@@ -1,13 +1,16 @@
 # vaner-desktop
 
 Cross-platform (Linux + Windows) desktop companion for
-[Vaner](https://github.com/Borgels/Vaner) — the predictive-context
-engine. Menu-bar / tray app that watches the daemon's active
-predictions over SSE and lets the user adopt a prepared package into
-whichever AI agent (Claude Code, Cursor, Zed, etc.) is running.
+[Vaner](https://github.com/Borgels/vaner) — the local-first preparation
+engine. Menu-bar / tray app that surfaces Prepared Work from the daemon:
+review notes, bug hypotheses, docs drift, virtual diffs, research briefs, and
+ready prediction-backed opportunities.
+
+The app is intentionally non-mutating. It can inspect or export Vaner-owned
+content, but it does not apply patches or edit project files automatically.
 
 Tauri v2 + SvelteKit. Rust backend depends on the shared
-[`vaner-contract`](https://github.com/Borgels/Vaner/tree/main/crates/vaner-contract)
+[`vaner-contract`](https://github.com/Borgels/vaner/tree/main/crates/vaner-contract)
 crate from the Vaner monorepo; the SwiftUI macOS sibling
 ([vaner-desktop-macos](https://github.com/Borgels/vaner-desktop-macos))
 uses the same conformance fixtures to stay in lock-step without
@@ -185,8 +188,8 @@ Short version:
 ```
 ┌─────────────────────────────────────────────┐
 │          vaner daemon (Python)              │
-│     /predictions/active  •  /events/stream  │
-│     /predictions/{id}/adopt  •  /status     │
+│     /prepared-work  •  /work-products       │
+│     /events/stream  •  /status              │
 └──────────────────────┬──────────────────────┘
                        │ HTTP / SSE (loopback)
                        │
@@ -213,6 +216,11 @@ Short version:
 Design tokens (`src/lib/tokens.css`) are vendored from Vaner's
 `ui/cockpit/src/styles/tokens.css` so the visual language stays 1:1
 with the web cockpit and the SwiftUI macOS app.
+
+The normal UI asks `/prepared-work` for card-shaped data and follows the
+server-provided action links for inspect, export, dismiss, and feedback. Older
+prediction endpoints remain available for diagnostic flows but are no longer
+the primary product surface.
 
 ## License
 

@@ -41,7 +41,7 @@ pub async fn active_predictions(
 
 #[tauri::command]
 pub async fn prepared_work(limit: Option<u16>) -> Result<Vec<serde_json::Value>, String> {
-    let capped = limit.unwrap_or(8).clamp(1, 50);
+    let capped = limit.unwrap_or(3).clamp(1, 12);
     let url = format!("http://127.0.0.1:8473/prepared-work?surface=desktop&limit={capped}");
     let body: serde_json::Value = reqwest::get(url)
         .await
@@ -62,8 +62,12 @@ pub async fn prepared_work(limit: Option<u16>) -> Result<Vec<serde_json::Value>,
 pub async fn prepared_work_action(
     endpoint: String,
     kind: String,
+    arguments: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     if !endpoint.starts_with('/') || endpoint.starts_with("//") {
+        return Err("Invalid prepared work endpoint.".into());
+    }
+    if endpoint.contains("..") || !endpoint.starts_with("/work-products/") {
         return Err("Invalid prepared work endpoint.".into());
     }
     let url = format!("http://127.0.0.1:8473{endpoint}");
@@ -71,9 +75,14 @@ pub async fn prepared_work_action(
     let request = if kind == "inspect" {
         client.get(url)
     } else if kind == "feedback" {
+        let feedback_state = arguments
+            .as_ref()
+            .and_then(|value| value.get("feedback_state"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("useful");
         client
             .post(url)
-            .json(&serde_json::json!({ "feedback_state": "useful" }))
+            .json(&serde_json::json!({ "feedback_state": feedback_state }))
     } else {
         client.post(url)
     };

@@ -14,7 +14,7 @@
   async function run(card: PreparedWorkCard, action: PreparedWorkAction) {
     if (!action.endpoint) return;
     try {
-      await invoke("prepared_work_action", { endpoint: action.endpoint, kind: action.kind });
+      await invoke("prepared_work_action", { endpoint: action.endpoint, kind: action.kind, arguments: action.arguments ?? {} });
       showToast(`${action.label} complete.`, "success", 3000);
     } catch (err) {
       const msg = typeof err === "string" ? err : `Couldn't ${action.label.toLowerCase()}.`;
@@ -34,6 +34,9 @@
           <div class="title">{card.title}</div>
         </div>
         <div class="summary">{card.summary}</div>
+        {#if card.why_prepared}
+          <div class="why">{card.why_prepared}</div>
+        {/if}
         <div class="meta">
           <span>{card.confidence_label}</span>
           <span>{card.freshness_label}</span>
@@ -42,6 +45,11 @@
             <span>{card.evidence_count} sources</span>
           {/if}
         </div>
+        {#if card.action_note}
+          <div class:warn={card.freshness_state === "possibly_stale" || card.freshness_state === "stale"} class="note">
+            {card.action_note}
+          </div>
+        {/if}
         <div class="actions">
           {#if card.primary_action?.endpoint}
             {#if i === 0}
@@ -50,8 +58,8 @@
               <V1GhostButton title={card.primary_action.label} onclick={() => run(card, card.primary_action!)} />
             {/if}
           {/if}
-          {#each card.secondary_actions.filter((a) => a.endpoint).slice(0, 2) as action (`${card.id}-${action.kind}`)}
-            <V1GhostButton title={action.kind === "feedback" ? "Useful" : action.label} onclick={() => run(card, action)} />
+          {#each card.secondary_actions.filter((a) => a.endpoint).slice(0, 3) as action (`${card.id}-${action.kind}-${action.label}`)}
+            <V1GhostButton title={action.label} onclick={() => run(card, action)} />
           {/each}
         </div>
       </article>
@@ -105,6 +113,17 @@
     font-size: 11.5px;
     line-height: 1.38;
     color: var(--vd-fg-3);
+  }
+  .why,
+  .note {
+    margin-top: 6px;
+    font-family: var(--vd-font);
+    font-size: 10.8px;
+    line-height: 1.35;
+    color: var(--vd-fg-4);
+  }
+  .note.warn {
+    color: var(--vd-st-warn);
   }
   .meta {
     display: flex;
