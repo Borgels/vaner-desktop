@@ -105,6 +105,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::active_predictions,
+            commands::prepared_work,
+            commands::prepared_work_action,
             commands::adopt_prediction,
             commands::app_quit,
             commands::window_hide,

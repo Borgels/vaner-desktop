@@ -13,11 +13,12 @@ import { blockedSources } from "./blocked-sources.js";
 import { engineStatus } from "./engine-status.js";
 import { predictions } from "./predictions.js";
 import { prepared } from "./prepared.js";
+import { preparedWork } from "./prepared-work.js";
 import { silentHours } from "./silent-hours.js";
 
 export const vanerState: Readable<VanerState> = derived(
-  [predictions, engineStatus, prepared, blockedSources, agentDetector, silentHours, isPaused],
-  ([$preds, $status, $prep, $blocked, $agents, $silent, $paused]) => {
+  [predictions, preparedWork, engineStatus, prepared, blockedSources, agentDetector, silentHours, isPaused],
+  ([$preds, $work, $status, $prep, $blocked, $agents, $silent, $paused]) => {
     const hasAnySource = $status.sourcesCount > 0;
     const inputs: ReducerInputs = {
       status: $status,
@@ -27,6 +28,7 @@ export const vanerState: Readable<VanerState> = derived(
       silentHours: $silent,
       hasAnySource,
       activePredictions: $preds,
+      preparedWork: $work,
       noAgentSuggestions: $agents.suggestions,
       paused: $paused,
     };

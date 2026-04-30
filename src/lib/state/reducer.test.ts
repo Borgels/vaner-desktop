@@ -12,7 +12,7 @@ import type {
   SourceRef,
   SourceStatus,
 } from "./types.js";
-import type { PredictedPrompt } from "$lib/contract/types.js";
+import type { PredictedPrompt, PreparedWorkCard } from "$lib/contract/types.js";
 
 // ---------- helpers ----------
 
@@ -50,6 +50,7 @@ const baseInputs = (override: Partial<ReducerInputs> = {}): ReducerInputs => ({
   silentHours: false,
   hasAnySource: true,
   activePredictions: [],
+  preparedWork: [],
   noAgentSuggestions: [],
   paused: false,
   ...override,
@@ -84,6 +85,30 @@ const aPrediction = (
     run: { readiness, started_at: "2026-04-26T20:00:00Z" },
     artifacts: {},
   }) as unknown as PredictedPrompt;
+
+const aPreparedWorkCard = (): PreparedWorkCard => ({
+  id: "work_product:wp",
+  source_id: "wp",
+  source_type: "work_product",
+  kind: "diff",
+  title: "Prepared fix",
+  summary: "Patch-shaped artifact ready for inspection.",
+  badge: "Diff",
+  confidence_label: "High",
+  freshness_label: "Fresh",
+  target_label: "src/file.ts",
+  evidence_count: 2,
+  created_at: 0,
+  updated_at: 0,
+  primary_action: {
+    kind: "export",
+    label: "Export",
+    tool: "vaner.work_products.export",
+    endpoint: "/work-products/wp/export",
+    arguments: { work_product_id: "wp" },
+  },
+  secondary_actions: [],
+});
 
 const blockedSrc = (): SourceStatus => ({
   source: githubSrc,
@@ -138,6 +163,21 @@ describe("StateReducer precedence chain", () => {
       }),
     );
     expect(out.kind).toBe("activePredictions");
+  });
+
+  it("prepared work is the primary user-facing surface", () => {
+    const out = reduce(
+      baseInputs({
+        preparedWork: [aPreparedWorkCard()],
+        activePredictions: [aPrediction("ready", 0.8)],
+        prepared: { lead: aMoment("a"), supporting: [], pendingWhenNoAgent: 0 },
+        anyAgentRunning: false,
+      }),
+    );
+    expect(out.kind).toBe("preparedWork");
+    if (out.kind === "preparedWork") {
+      expect(out.cards[0].id).toBe("work_product:wp");
+    }
   });
 
   it("ready prediction + no agent → .noActiveAgent", () => {

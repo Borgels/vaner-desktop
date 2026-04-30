@@ -39,6 +39,55 @@ pub async fn active_predictions(
     state.engine.active_predictions().await.map_err(human)
 }
 
+#[tauri::command]
+pub async fn prepared_work(limit: Option<u16>) -> Result<Vec<serde_json::Value>, String> {
+    let capped = limit.unwrap_or(8).clamp(1, 50);
+    let url = format!("http://127.0.0.1:8473/prepared-work?surface=desktop&limit={capped}");
+    let body: serde_json::Value = reqwest::get(url)
+        .await
+        .map_err(|_| "Vaner is unreachable. Is the daemon running?".to_string())?
+        .error_for_status()
+        .map_err(|e| format!("prepared-work request failed: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("prepared-work decode failed: {e}"))?;
+    Ok(body
+        .get("prepared_work")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default())
+}
+
+#[tauri::command]
+pub async fn prepared_work_action(
+    endpoint: String,
+    kind: String,
+) -> Result<serde_json::Value, String> {
+    if !endpoint.starts_with('/') || endpoint.starts_with("//") {
+        return Err("Invalid prepared work endpoint.".into());
+    }
+    let url = format!("http://127.0.0.1:8473{endpoint}");
+    let client = reqwest::Client::new();
+    let request = if kind == "inspect" {
+        client.get(url)
+    } else if kind == "feedback" {
+        client
+            .post(url)
+            .json(&serde_json::json!({ "feedback_state": "useful" }))
+    } else {
+        client.post(url)
+    };
+    request
+        .send()
+        .await
+        .map_err(|_| "Vaner is unreachable. Is the daemon running?".to_string())?
+        .error_for_status()
+        .map_err(|e| format!("prepared work action failed: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("prepared work response decode failed: {e}"))
+}
+
 /// Adopt flow:
 ///  1. POST `/predictions/{id}/adopt` to the daemon.
 ///  2. Stash the full Resolution (+ raw bytes for unknown server keys)

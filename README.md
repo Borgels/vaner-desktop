@@ -180,8 +180,7 @@ The installer lands at
 
 ## Architecture
 
-See `/home/abo/.claude/plans/task-finish-phase-d-async-reef.md` in the
-original planning session; the short version:
+Short version:
 
 ```
 ┌─────────────────────────────────────────────┐

@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
   import { onMount } from "svelte";
+  import { startPreparedWorkPolling } from "$lib/stores/prepared-work.js";
   import { startPredictionStream } from "$lib/stores/predictions.js";
   import { vanerState } from "$lib/stores/vaner-state.js";
   import EngineMissing from "$lib/components/popover-states/EngineMissing.svelte";
@@ -14,6 +15,7 @@
   import Learning from "$lib/components/popover-states/Learning.svelte";
   import Watching from "$lib/components/popover-states/Watching.svelte";
   import Prepared from "$lib/components/popover-states/Prepared.svelte";
+  import PreparedWork from "$lib/components/popover-states/PreparedWork.svelte";
   import Attention from "$lib/components/popover-states/Attention.svelte";
   import PermissionNeeded from "$lib/components/popover-states/PermissionNeeded.svelte";
   import NoActiveAgent from "$lib/components/popover-states/NoActiveAgent.svelte";
@@ -27,6 +29,7 @@
 
   onMount(() => {
     startPredictionStream();
+    startPreparedWorkPolling();
   });
 </script>
 
@@ -45,6 +48,8 @@
     <Watching summary={$vanerState.summary} silentHours={$vanerState.silentHours} />
   {:else if $vanerState.kind === "prepared"}
     <Prepared lead={$vanerState.lead} supporting={$vanerState.supporting} />
+  {:else if $vanerState.kind === "preparedWork"}
+    <PreparedWork cards={$vanerState.cards} />
   {:else if $vanerState.kind === "attention"}
     <Attention conflict={$vanerState.conflict} />
   {:else if $vanerState.kind === "permissionNeeded"}

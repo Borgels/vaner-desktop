@@ -8,7 +8,7 @@
 // state for the same daemon condition, which is exactly the bug a single
 // pure reducer is supposed to prevent.
 
-import { isAdoptable, type PredictedPrompt } from "$lib/contract/types.js";
+import { isAdoptable, type PredictedPrompt, type PreparedWorkCard } from "$lib/contract/types.js";
 import type {
   AgentSuggestion,
   EngineStatus,
@@ -29,6 +29,7 @@ export interface ReducerInputs {
   /** 0.8.0 prediction-centric pondering. Defaults to [] for callers
    *  that haven't been updated to the new shape. */
   activePredictions: PredictedPrompt[];
+  preparedWork: PreparedWorkCard[];
   /** Suggested agents to launch when noActiveAgent fires. Equivalent
    *  to the macOS `PreviewData.noAgentSuggestions` constant; injected
    *  here so the reducer stays pure (no static-data import). */
@@ -73,6 +74,7 @@ export function reduce(i: ReducerInputs): VanerState {
   //    still surfaces.
   if (i.paused) {
     const queued =
+      i.preparedWork.length +
       i.activePredictions.filter((p) => isAdoptable(p.run.readiness)).length +
       (i.prepared.lead ? 1 : 0) +
       i.prepared.supporting.length;
@@ -88,6 +90,10 @@ export function reduce(i: ReducerInputs): VanerState {
       etaMinutes: i.status.indexing.etaMinutes,
     };
     return { kind: "learning", progress };
+  }
+
+  if (i.preparedWork.length > 0) {
+    return { kind: "preparedWork", cards: i.preparedWork };
   }
 
   // 5. 0.8.0 — predictions in drafting/ready outrank a reactive

@@ -4,7 +4,7 @@
 // The reducer at ./reducer.ts is the single producer of `VanerState`;
 // every popover state component consumes a variant.
 
-import type { PredictedPrompt } from "$lib/contract/types.js";
+import type { PredictedPrompt, PreparedWorkCard } from "$lib/contract/types.js";
 
 // -----------------------------------------------------------------------------
 // Source / kinds
@@ -154,6 +154,7 @@ export type VanerState =
   | { kind: "learning"; progress: LearningProgress }
   | { kind: "watching"; summary: WatchingSummary; silentHours: boolean }
   | { kind: "prepared"; lead: PreparedMoment; supporting: PreparedMoment[] }
+  | { kind: "preparedWork"; cards: PreparedWorkCard[] }
   | { kind: "attention"; conflict: ConflictSummary }
   | { kind: "permissionNeeded"; sources: SourceStatus[] }
   | { kind: "noActiveAgent"; pendingCount: number; suggestedLaunch: AgentSuggestion[] }
