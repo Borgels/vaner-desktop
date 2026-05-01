@@ -5,16 +5,18 @@
 //!
 //! Menu structure:
 //!
-//!     ┌──────────────────┐
-//!     │  Open Vaner      │  ← popover::show
-//!     │  Show Companion… │  ← opens the companion window
-//!     ├──────────────────┤
-//!     │  Preferences…    │  ← opens companion window on Preferences pane
-//!     │  Pause / Resume  │  ← emits menu:toggle-pause; Svelte flips
-//!     │                  │    the isPaused store + .paused popover
-//!     ├──────────────────┤
-//!     │  Quit            │  ← app.exit(0)
-//!     └──────────────────┘
+//! ```text
+//! ┌──────────────────┐
+//! │  Open Vaner      │  ← popover::show
+//! │  Show Companion… │  ← opens the companion window
+//! ├──────────────────┤
+//! │  Preferences…    │  ← opens companion window on Preferences pane
+//! │  Pause / Resume  │  ← emits menu:toggle-pause; Svelte flips
+//! │                  │    the isPaused store + .paused popover
+//! ├──────────────────┤
+//! │  Quit            │  ← app.exit(0)
+//! └──────────────────┘
+//! ```
 //!
 //! `on_tray_icon_event` forwards to `tauri_plugin_positioner::on_tray_event`
 //! so the positioner plugin's tray-bounds cache stays populated. Without

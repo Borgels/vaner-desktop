@@ -29,6 +29,7 @@ pub mod companion;
 pub mod engine;
 pub mod onboarding;
 pub mod popover;
+pub mod prepared_work_endpoint;
 pub mod session;
 pub mod setup;
 pub mod sse_task;

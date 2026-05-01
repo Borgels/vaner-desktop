@@ -9,6 +9,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use vaner_contract::{EngineClient, EngineClientError, PredictedPrompt, stash_adopt};
 
 use crate::AppState;
+use crate::prepared_work_endpoint::validate_prepared_work_endpoint;
 
 /// `Quit` from the companion sidebar (and any other "exit Vaner"
 /// affordance the UI surfaces). The companion's `window.close()`
@@ -64,12 +65,7 @@ pub async fn prepared_work_action(
     kind: String,
     arguments: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
-    if !endpoint.starts_with('/') || endpoint.starts_with("//") {
-        return Err("Invalid prepared work endpoint.".into());
-    }
-    if endpoint.contains("..") || !endpoint.starts_with("/work-products/") {
-        return Err("Invalid prepared work endpoint.".into());
-    }
+    validate_prepared_work_endpoint(&endpoint).map_err(str::to_string)?;
     let url = format!("http://127.0.0.1:8473{endpoint}");
     let client = reqwest::Client::new();
     let request = if kind == "inspect" {
