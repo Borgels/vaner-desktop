@@ -15,9 +15,9 @@
 //!     └──────────────────┘
 
 use tauri::{
-    AppHandle, Emitter, Manager, Runtime,
+    AppHandle, Emitter, Runtime,
     menu::{Menu, MenuItem, PredefinedMenuItem},
-    tray::{TrayIconBuilder, TrayIconEvent},
+    tray::TrayIconBuilder,
 };
 
 use crate::popover;
@@ -65,16 +65,12 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { .. } = event {
-                // `menu_on_left_click(true)` means the menu pops on
-                // primary-button clicks for free. We also nudge the
-                // popover toward the tray icon so that when the user
-                // picks "Open Vaner" it appears anchored.
-                use tauri_plugin_positioner::{Position, WindowExt};
-                if let Some(window) = tray.app_handle().get_webview_window(popover::WINDOW_LABEL) {
-                    let _ = window.move_window(Position::TrayCenter);
-                }
-            }
+            // The positioner plugin caches the tray icon's bounds so
+            // `Position::TrayCenter` knows where to anchor — without
+            // this hook the cache stays empty and any later
+            // `move_window(TrayCenter)` panics with "Tray position not
+            // set". Call it on every tray event regardless of variant.
+            tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);
         })
         .build(app)?;
     Ok(())

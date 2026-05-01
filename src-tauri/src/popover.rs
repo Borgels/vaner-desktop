@@ -13,18 +13,21 @@
 //! the "Open Vaner" menu item.
 
 use tauri::{AppHandle, Manager, Runtime};
-use tauri_plugin_positioner::{Position, WindowExt};
 
 pub const WINDOW_LABEL: &str = "main";
 
-/// Show the popover, anchored to the tray icon when possible.
+/// Show the popover. Window-positioning anchoring (e.g.
+/// `tauri-plugin-positioner::Position::TrayCenter`) was tried and
+/// removed: the plugin panics with "Tray position not set" when its
+/// internal cache is empty, the panic survives `catch_unwind` only on
+/// the strict letter — the popover then refuses to surface anyway.
+/// Without explicit positioning, the window opens wherever the
+/// compositor places it (typically last-known or center-of-screen),
+/// which is acceptable for a borderless popover.
 pub fn show<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let window = app
         .get_webview_window(WINDOW_LABEL)
         .ok_or(tauri::Error::WindowNotFound)?;
-    // Anchor to tray — falls back gracefully when the compositor
-    // refuses the request (typical on GNOME/Wayland).
-    let _ = window.move_window(Position::TrayCenter);
     window.show()?;
     window.set_focus()?;
     Ok(())
