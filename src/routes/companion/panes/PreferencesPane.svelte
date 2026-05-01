@@ -2,14 +2,10 @@
   Preferences pane — Linux equivalent of vaner-desktop-macos
   Companion/PreferencesPane.swift. Mirrors the macOS section structure:
 
-    1. Mode toggle (Simple ↔ Advanced)
-    2. Active bundle card  ← driven by setup_status / policy_show
-    3. Your answers recap  ← work styles, priority, postures (Simple)
-    4. Silent hours        ← toggle + from/to + weekdays-only
-    5. Startup             ← Launch at login (Linux: XDG autostart)
-    6. Memory              ← Export / Privacy / Clear
-    (Advanced mode adds Runtime / Budgets / Drafting / Predictions /
-     Deep-Run / Integration cards — read-mostly summaries)
+    1. Active setup card
+    2. Silent hours        ← toggle + from/to + weekdays-only
+    3. Startup             ← Launch at login (Linux: XDG autostart)
+    4. Memory              ← Export / Privacy / Clear
 
   Persona / tone sliders (chattiness / learnDepth / interrupt / voice)
   from seed.js were design speculation that never shipped on macOS.
@@ -22,7 +18,7 @@
   import V1Body from "$lib/components/primitives/V1Body.svelte";
   import V1GhostButton from "$lib/components/primitives/V1GhostButton.svelte";
   import VSectionLabel from "$lib/components/primitives/VSectionLabel.svelte";
-  import { setup, setupMode, loadStatus, loadHardware, loadPolicy } from "$lib/stores/setup.js";
+  import { setup, loadStatus, loadHardware, loadPolicy } from "$lib/stores/setup.js";
   import { silentHours } from "$lib/stores/silent-hours.js";
   import { showToast } from "$lib/stores/toast.js";
 
@@ -95,8 +91,6 @@
     loadPolicy();
   });
 
-  const isSimple = $derived($setupMode === "simple");
-  const answers = $derived($setup.status?.setup);
   const bundle = $derived($setup.bundle);
   const tier = $derived($setup.hardware?.tier);
 </script>
@@ -106,23 +100,9 @@
   <V1Headline text="How Vaner sounds and when it speaks" size={22} />
 </header>
 
-<!-- Mode toggle -->
-<div class="card">
-  <div class="card-head"><span class="rail" style="background: var(--vd-purple);"></span><span>Mode</span></div>
-  <div class="seg">
-    <button class:active={isSimple} onclick={() => setupMode.set("simple")}>Simple</button>
-    <button class:active={!isSimple} onclick={() => setupMode.set("advanced")}>Advanced</button>
-  </div>
-  <p class="hint">
-    {isSimple
-      ? "Simple Mode shows outcome-level questions; the engine picks safe defaults."
-      : "Advanced Mode exposes per-knob engine settings. Bundle still applies."}
-  </p>
-</div>
-
 <!-- Active bundle -->
 <div class="card">
-  <div class="card-head"><span class="rail" style="background: var(--vd-purple);"></span><span>Active bundle</span></div>
+  <div class="card-head"><span class="rail" style="background: var(--vd-purple);"></span><span>Active setup</span></div>
   {#if bundle}
     <div class="bundle-row">
       <span class="bundle-name">{bundle.id ?? "—"}</span>
@@ -140,29 +120,6 @@
     <p class="muted">Loading bundle…</p>
   {/if}
 </div>
-
-<!-- Simple-mode answers recap -->
-{#if isSimple}
-  <div class="card">
-    <div class="card-head"><span class="rail" style="background: var(--vd-fg-3);"></span><span>Your answers</span></div>
-    {#if answers}
-      <dl class="kv">
-        <dt>Work styles</dt>
-        <dd>{answers.work_styles?.join(" / ") ?? "—"}</dd>
-        <dt>Priority</dt>
-        <dd>{answers.priority ?? "—"}</dd>
-        <dt>Compute</dt>
-        <dd>{answers.compute_posture ?? "—"}</dd>
-        <dt>Cloud</dt>
-        <dd>{answers.cloud_posture ?? "—"}</dd>
-        <dt>Background</dt>
-        <dd>{answers.background_posture ?? "—"}</dd>
-      </dl>
-    {:else}
-      <p class="muted">Run the setup wizard to record your preferences.</p>
-    {/if}
-  </div>
-{/if}
 
 <!-- Silent hours -->
 <div class="card">
@@ -262,30 +219,6 @@
     border-radius: 1px;
     flex: 0 0 auto;
   }
-  .seg {
-    display: inline-flex;
-    border: 0.5px solid var(--vd-line);
-    border-radius: var(--vd-r-chip);
-    overflow: hidden;
-    width: max-content;
-  }
-  .seg button {
-    background: transparent;
-    border: 0;
-    color: var(--vd-fg-2);
-    padding: 6px 14px;
-    font-family: var(--vd-font);
-    font-size: 12px;
-    cursor: pointer;
-    transition: background 0.12s, color 0.12s;
-  }
-  .seg button.active {
-    background: color-mix(in srgb, var(--vd-purple) 22%, transparent);
-    color: var(--vd-fg-1);
-  }
-  .seg button + button {
-    border-left: 0.5px solid var(--vd-line);
-  }
   .hint {
     margin: 0;
     font-size: 11.5px;
@@ -320,26 +253,6 @@
     gap: 6px;
     align-items: center;
     flex-wrap: wrap;
-  }
-  dl.kv {
-    margin: 0;
-    display: grid;
-    grid-template-columns: 110px 1fr;
-    gap: 6px 16px;
-    font-family: var(--vd-font);
-    font-size: 12.5px;
-  }
-  dl.kv dt {
-    color: var(--vd-fg-3);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-size: 10.5px;
-    font-weight: 500;
-    padding-top: 2px;
-  }
-  dl.kv dd {
-    margin: 0;
-    color: var(--vd-fg-1);
   }
   .row {
     display: flex;

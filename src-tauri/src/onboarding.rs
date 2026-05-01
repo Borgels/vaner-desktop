@@ -2,8 +2,8 @@
 //! `/onboarding` route. Opened on first launch when the setup status's
 //! `completed_at` is null, or via `--onboarding` arg flag for testing.
 //!
-//! Lifecycle: created lazily, closed on completion (the `onboarding:done`
-//! event from the Svelte side calls `close_onboarding`).
+//! Lifecycle: created lazily and closed only when the user clicks the
+//! final Ready-screen action.
 
 use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 
@@ -23,9 +23,9 @@ pub fn open_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     // see pathname '/onboarding' and resolve it to the right route.
     WebviewWindowBuilder::new(app, ONBOARDING_LABEL, WebviewUrl::App("onboarding/".into()))
         .title("Welcome to Vaner")
-        .inner_size(720.0, 540.0)
-        .min_inner_size(640.0, 480.0)
-        .resizable(false)
+        .inner_size(780.0, 640.0)
+        .min_inner_size(680.0, 560.0)
+        .resizable(true)
         .decorations(true)
         .visible(true)
         .build()?;

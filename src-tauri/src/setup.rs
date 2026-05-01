@@ -123,6 +123,77 @@ async fn run_vaner_setup_json(
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+async fn run_command(bin: &str, args: &[&str], allow_nonzero: bool) -> Result<String, String> {
+    let output = Command::new(bin)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| format!("failed to run `{bin}`: {e}"))?;
+    if !output.status.success() && !allow_nonzero {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!(
+                "`{bin}` exited with code {}",
+                output.status.code().unwrap_or(-1)
+            )
+        } else {
+            stderr
+        });
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+async fn finish_local_setup(parsed_apply: &Value) -> Result<(), String> {
+    let Some(user_rec) = parsed_apply.get("model_recommendation") else {
+        return Ok(());
+    };
+    let needs_runtime_install = user_rec
+        .get("needs_runtime_install")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let needs_model_download = user_rec
+        .get("needs_model_download")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let runtime = user_rec
+        .get("selected_runtime")
+        .and_then(|v| v.get("id"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("ollama");
+    let model_id = user_rec
+        .get("selected_model")
+        .and_then(|v| v.get("model_id"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if runtime == "ollama" {
+        let ollama = which::which("ollama").map_err(|_| {
+            "Ollama is required for this setup but is not installed yet.".to_string()
+        })?;
+        if needs_runtime_install {
+            return Err("Ollama is required for this setup but is not installed yet.".to_string());
+        }
+        if needs_model_download && !model_id.is_empty() {
+            let ollama_bin = ollama.to_string_lossy().to_string();
+            run_command(&ollama_bin, &["pull", model_id], false).await?;
+        }
+    }
+
+    let vaner = crate::vaner_cli::resolve_vaner_bin()?;
+    let vaner_bin = vaner.to_string_lossy().to_string();
+    let repo_root = repo_root_arg();
+    let _ = run_command(&vaner_bin, &["up", "--detach", "--path", &repo_root], true).await?;
+    let _ = run_command(
+        &vaner_bin,
+        &["status", "--json", "--path", &repo_root],
+        true,
+    )
+    .await?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Question schema — hand-mirrored from the choice tuples in
 // src/vaner/cli/commands/setup.py (_WORK_STYLE_CHOICES, _PRIORITY_CHOICES,
@@ -281,8 +352,21 @@ pub async fn models_recommended(work_styles: Option<String>) -> Result<Value, St
             }));
         }
     };
-    serde_json::from_str::<Value>(&stdout)
-        .map_err(|e| format!("could not parse models-recommended output: {e}"))
+    match serde_json::from_str::<Value>(&stdout) {
+        Ok(value) => Ok(value),
+        Err(_) => Ok(serde_json::json!({
+            "registry": {
+                "schema_version": null,
+                "generated_at": null,
+                "generator": "desktop-fallback:cli-unavailable",
+                "model_count": 0,
+                "sources": []
+            },
+            "budget": null,
+            "selected": null,
+            "alternatives": [],
+        })),
+    }
 }
 
 /// `vaner setup apply --json` — persist answers (or an explicit
@@ -364,6 +448,9 @@ pub async fn setup_apply(payload: Value) -> Result<AppliedPolicy, String> {
         "--path".into(),
         repo_root_arg(),
     ];
+    if confirm_widening {
+        owned_args.push("--confirm-cloud-widening".into());
+    }
 
     if let Some(id) = explicit_bundle_id {
         owned_args.push("--bundle-id".into());
@@ -395,6 +482,7 @@ pub async fn setup_apply(payload: Value) -> Result<AppliedPolicy, String> {
     let stdout = stdout?;
     let parsed: Value = serde_json::from_str(&stdout)
         .map_err(|e| format!("could not parse setup apply output: {e}"))?;
+    finish_local_setup(&parsed).await?;
 
     // The CLI emits { config_path, selected_bundle_id, reasons, daemon }.
     // We re-shape to the desktop's `AppliedPolicy` (which always carries

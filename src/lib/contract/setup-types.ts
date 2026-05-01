@@ -181,12 +181,25 @@ export type CPUClass = "low" | "mid" | "high";
 export type GPU = "none" | "integrated" | "nvidia" | "amd" | "apple_silicon";
 export type Runtime = "ollama" | "llama.cpp" | "lmstudio" | "vllm" | "mlx";
 
+export interface GPUDevice {
+  name: string;
+  vendor: string;
+  kind: GPU;
+  memory_total_bytes: number | null;
+  memory_display_gb: number | null;
+  memory_kind: "vram" | "unified" | "system" | "unknown";
+}
+
 export interface HardwareProfile {
   os: HostOS;
   cpu_class: CPUClass;
   ram_gb: number;
+  memory_total_bytes?: number;
+  memory_display_gb?: number;
+  memory_is_unified?: boolean;
   gpu: GPU;
   gpu_vram_gb: number | null;
+  gpu_devices?: GPUDevice[];
   is_battery: boolean;
   thermal_constrained: boolean;
   detected_runtimes: Runtime[];

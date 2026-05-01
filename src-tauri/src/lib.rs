@@ -26,6 +26,7 @@ pub mod agent_detector;
 pub mod clients;
 pub mod commands;
 pub mod companion;
+pub mod diagnostics;
 pub mod engine;
 pub mod onboarding;
 pub mod popover;
@@ -100,6 +101,7 @@ pub fn run() {
             // can still re-show via invoke or tray click.
             if window.label() == popover::WINDOW_LABEL
                 && matches!(event, WindowEvent::Focused(false))
+                && !popover::is_pinned()
             {
                 let _ = popover::hide(window.app_handle());
             }
@@ -112,6 +114,12 @@ pub fn run() {
             commands::app_quit,
             commands::window_hide,
             updater::install_update,
+            popover::popover_toggle_pinned,
+            popover::popover_is_pinned,
+            diagnostics::diagnostics_status,
+            diagnostics::diagnostics_doctor,
+            diagnostics::diagnostics_restart_engine,
+            diagnostics::diagnostics_upgrade_engine,
             clients::clients_detect,
             clients::clients_install,
             clients::clients_install_all,

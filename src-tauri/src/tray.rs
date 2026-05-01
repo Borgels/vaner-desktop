@@ -8,7 +8,7 @@
 //! ```text
 //! ┌──────────────────┐
 //! │  Open Vaner      │  ← popover::show
-//! │  Show Companion… │  ← opens the companion window
+//! │  Pin window      │  ← keeps the small Vaner window open
 //! ├──────────────────┤
 //! │  Preferences…    │  ← opens companion window on Preferences pane
 //! │  Pause / Resume  │  ← emits menu:toggle-pause; Svelte flips
@@ -35,7 +35,7 @@ pub const TRAY_ID: &str = "main";
 
 /// Menu item IDs — stringly-typed per Tauri's API.
 const ID_OPEN: &str = "open";
-const ID_COMPANION: &str = "companion";
+const ID_PIN: &str = "pin";
 const ID_PREFERENCES: &str = "preferences";
 const ID_PAUSE: &str = "pause";
 const ID_QUIT: &str = "quit";
@@ -57,8 +57,8 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             ID_OPEN => {
                 let _ = popover::show(app);
             }
-            ID_COMPANION => {
-                let _ = companion::open_window(app, None);
+            ID_PIN => {
+                let _ = popover::toggle_pinned(app);
             }
             ID_PREFERENCES => {
                 let _ = companion::open_window(app, Some("preferences".into()));
@@ -89,7 +89,7 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
 fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let open = MenuItem::with_id(app, ID_OPEN, "Open Vaner", true, None::<&str>)?;
-    let companion = MenuItem::with_id(app, ID_COMPANION, "Show Companion…", true, None::<&str>)?;
+    let pin = MenuItem::with_id(app, ID_PIN, "Pin / Unpin window", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let prefs = MenuItem::with_id(app, ID_PREFERENCES, "Preferences…", true, None::<&str>)?;
     // UI-level mute toggle. Daemon-side POST /engine/pause is still
@@ -100,8 +100,5 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, ID_QUIT, "Quit", true, None::<&str>)?;
 
-    Menu::with_items(
-        app,
-        &[&open, &companion, &sep1, &prefs, &pause, &sep2, &quit],
-    )
+    Menu::with_items(app, &[&open, &pin, &sep1, &prefs, &pause, &sep2, &quit])
 }

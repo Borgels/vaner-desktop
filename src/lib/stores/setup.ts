@@ -150,36 +150,69 @@ export async function recommend(answers: SetupAnswers): Promise<SelectionResult 
 // Tauri command synthesises a fallback shape with most fields null.
 export type RecommendedModelEntry = {
   id: string;
-  family: string;
-  params_b: number;
-  min_effective_gb_q4: number;
-  intent_lean: string[];
-  ollama_id: string | null;
-  huggingface_id: string | null;
-  context_length: number;
-  popularity_rank: number;
-  rank_source: string;
+  model_id?: string;
+  display_name?: string;
+  family?: string;
+  params_b?: number;
+  min_effective_gb_q4?: number;
+  min_effective_memory_gb?: number;
+  recommended_effective_memory_gb?: number;
+  workload_tags?: string[];
+  runtime?: string;
+  runtime_label?: string;
+  base_url?: string;
+  already_installed?: boolean;
+  fit?: string;
+  download_size_gb?: number;
+  params?: Record<string, unknown>;
+  runtime_params?: Record<string, unknown>;
+  model_params?: Record<string, unknown>;
 };
 
 export type RecommendedBudget = {
   effective_gb_q4: number;
   accelerator: "nvidia" | "amd" | "apple_silicon" | "integrated" | "cpu_only" | "cluster";
-  gpu_count: number;
-  can_offload_to_cpu: boolean;
-  notes: string[];
+  accelerator_label?: string;
+  gpu_count?: number;
+  can_offload_to_cpu?: boolean;
+  memory_source?: "vram" | "unified" | "system" | "cpu";
+  notes?: string[];
 };
 
 export type ModelsRecommendedPayload = {
   registry: {
     schema_version: number | null;
-    generated_at: string | null;
-    generator: string;
-    model_count: number;
-    sources: Array<{ name: string; snapshot_at: string; note: string | null }>;
+    generated_at?: string | null;
+    verified_at?: string | null;
+    generator?: string;
+    model_count?: number;
+    valid?: boolean;
+    warning?: string | null;
+    sources: Array<string | { name: string; snapshot_at: string; note: string | null }>;
+  };
+  user?: {
+    detected_accelerator: string;
+    selected_runtime: { id: string; label: string; base_url?: string };
+    selected_model: RecommendedModelEntry;
+    needs_runtime_install: boolean;
+    needs_model_download: boolean;
+    next_actions: string[];
+    explanation: string;
+  };
+  hardware?: {
+    accelerator: string;
+    accelerator_type: string;
+    effective_memory_gb: number;
+    memory_source: string;
+    system_memory_gb: number;
+    is_unified_memory: boolean;
+    tier: string;
   };
   budget: RecommendedBudget | null;
   selected: RecommendedModelEntry | null;
   alternatives: RecommendedModelEntry[];
+  install_plan?: Array<{ id: string; label: string; required: boolean; command?: string[] }>;
+  diagnostics?: Record<string, unknown>;
 };
 
 /** `vaner setup models-recommended --json` (Vaner 0.8.8+) — hardware

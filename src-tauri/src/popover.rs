@@ -12,9 +12,12 @@
 //! it only becomes visible after the user clicks the tray icon or
 //! the "Open Vaner" menu item.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::{AppHandle, Manager, Runtime};
 
 pub const WINDOW_LABEL: &str = "main";
+static PINNED: AtomicBool = AtomicBool::new(false);
 
 /// Show the popover. Window-positioning anchoring (e.g.
 /// `tauri-plugin-positioner::Position::TrayCenter`) was tried and
@@ -29,6 +32,7 @@ pub fn show<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .get_webview_window(WINDOW_LABEL)
         .ok_or(tauri::Error::WindowNotFound)?;
     window.show()?;
+    window.set_always_on_top(PINNED.load(Ordering::Relaxed))?;
     window.set_focus()?;
     Ok(())
 }
@@ -36,6 +40,9 @@ pub fn show<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 /// Hide the popover without destroying state. Called from the focus-
 /// loss handler and "Pause" flows.
 pub fn hide<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    if PINNED.load(Ordering::Relaxed) {
+        return Ok(());
+    }
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
         window.hide()?;
     }
@@ -54,4 +61,34 @@ pub fn toggle<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     } else {
         show(app)
     }
+}
+
+pub fn is_pinned() -> bool {
+    PINNED.load(Ordering::Relaxed)
+}
+
+pub fn set_pinned<R: Runtime>(app: &AppHandle<R>, pinned: bool) -> tauri::Result<bool> {
+    PINNED.store(pinned, Ordering::Relaxed);
+    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+        window.set_always_on_top(pinned)?;
+        if pinned {
+            window.show()?;
+            window.set_focus()?;
+        }
+    }
+    Ok(pinned)
+}
+
+pub fn toggle_pinned<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<bool> {
+    set_pinned(app, !is_pinned())
+}
+
+#[tauri::command]
+pub fn popover_toggle_pinned(app: AppHandle) -> Result<bool, String> {
+    toggle_pinned(&app).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn popover_is_pinned() -> bool {
+    is_pinned()
 }
