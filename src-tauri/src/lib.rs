@@ -126,6 +126,7 @@ pub fn run() {
             clients::clients_install_all,
             clients::clients_uninstall,
             clients::clients_doctor,
+            clients::clients_verify,
             setup::setup_questions,
             setup::setup_recommend,
             setup::models_recommended,

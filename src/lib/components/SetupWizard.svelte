@@ -37,6 +37,7 @@
   import V1GhostButton from "$lib/components/primitives/V1GhostButton.svelte";
   import Spinner from "$lib/components/primitives/Spinner.svelte";
   import RecommendedPresetCard from "$lib/components/RecommendedPresetCard.svelte";
+  import WizardVerificationPanel from "$lib/components/WizardVerificationPanel.svelte";
   import type {
     BackgroundPosture,
     CloudPosture,
@@ -329,6 +330,34 @@
     steps = steps.map((s) => (s.status === "error" ? { ...s, status: "pending" } : s));
   }
 
+  // ---------------------------------------------------------------------
+  // Verification panel helpers
+  // ---------------------------------------------------------------------
+
+  /** Empty string lets the Tauri side resolve to its cwd default — same
+   *  convention used by ``clients_install`` / ``clients_detect`` etc.
+   *  See ``src/lib/stores/clients.ts::defaultRepoRoot``. */
+  function repoRootForVerification(): string {
+    return "";
+  }
+
+  async function repairClient(clientId: string): Promise<void> {
+    try {
+      await invoke<unknown>("clients_install", {
+        repoRoot: "",
+        clientId,
+        force: true,
+      });
+      showToast(`Re-installed Vaner into ${clientId}`, "success", 2500);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : `Could not re-install ${clientId}`,
+        "attention",
+        3500,
+      );
+    }
+  }
+
   // Per-slide button labels.
   const nextLabel = $derived(
     slide === 0
@@ -568,6 +597,12 @@
             window from the tray to see prepared work, switch agents, or
             pin the window while you work.
           </p>
+
+          <WizardVerificationPanel
+            repoRoot={repoRootForVerification()}
+            onRepair={(clientId) => repairClient(clientId)}
+          />
+
           <div class="actions inline">
             <V1PrimaryButton title="Open Vaner" tint="var(--vd-amber)" onclick={() => onComplete()} />
           </div>
