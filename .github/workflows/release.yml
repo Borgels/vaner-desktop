@@ -30,6 +30,8 @@ jobs:
         run: |
           set -e
           fail() { echo "::error::$1"; exit 1; }
+
+          # Signing / updater placeholders.
           grep -q "REPLACE_WITH_40_CHAR_FINGERPRINT" scripts/install.sh \
             && fail "scripts/install.sh still has the placeholder fingerprint."
           ! grep -q "BEGIN PGP PUBLIC KEY BLOCK" scripts/release-key.asc \
@@ -38,6 +40,35 @@ jobs:
             && fail "scripts/release-key.asc still has the placeholder body."
           grep -q "REPLACE_WITH_TAURI_UPDATER_PUBKEY" src-tauri/tauri.conf.json \
             && fail "src-tauri/tauri.conf.json is missing the updater pubkey."
+
+          # Bundle metadata. Without these, the released .deb shows
+          # "Maintainer: vaner" / "Publisher: Unknown" / no copyright,
+          # which is what slipped through into v0.2.2.
+          conf=src-tauri/tauri.conf.json
+          [ -z "$(jq -r '.bundle.publisher // empty' $conf)" ] \
+            && fail "$conf bundle.publisher is empty (shows as Maintainer/Publisher in .deb / NSIS)."
+          [ -z "$(jq -r '.bundle.copyright // empty' $conf)" ] \
+            && fail "$conf bundle.copyright is empty."
+          [ -z "$(jq -r '.bundle.homepage // empty' $conf)" ] \
+            && fail "$conf bundle.homepage is empty."
+          [ -z "$(jq -r '.bundle.license // empty' $conf)" ] \
+            && fail "$conf bundle.license is empty."
+          [ -z "$(jq -r '.bundle.shortDescription // empty' $conf)" ] \
+            && fail "$conf bundle.shortDescription is empty."
+
+          # Version triple stays in lock-step (package.json, Cargo.toml,
+          # tauri.conf.json all advertise the same version to users).
+          tauri_v=$(jq -r '.version' $conf)
+          pkg_v=$(jq -r '.version' package.json)
+          cargo_v=$(awk -F'"' '/^version/ {print $2; exit}' src-tauri/Cargo.toml)
+          if [ "$tauri_v" != "$pkg_v" ] || [ "$tauri_v" != "$cargo_v" ]; then
+            fail "version mismatch: tauri.conf.json=$tauri_v package.json=$pkg_v Cargo.toml=$cargo_v"
+          fi
+
+          # Cargo.toml authorship.
+          ! grep -q "^authors" src-tauri/Cargo.toml \
+            && fail "src-tauri/Cargo.toml is missing [package].authors."
+
           echo "all release-time placeholders resolved."
 
       - name: install system deps

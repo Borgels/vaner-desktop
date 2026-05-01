@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.2.3] - 2026-05-01
+
+### Fixed
+- **Popover not draggable on Linux** — decorationless windows on Linux
+  can't be moved without an explicit `data-tauri-drag-region`. The 8px
+  invisible strip that was meant to fix this in 0.2.2 was undiscoverable
+  in practice. The whole `QuietShell` header is now the drag region, so
+  every popover state (engineMissing, error, watching, prepared, …) is
+  draggable from the brand area at the top.
+- **Misleading "Engine error" on fresh install** — installing the
+  `.deb` on a machine that has never seen the `vaner` CLI showed the
+  attention-styled "Engine isn't responding on localhost / Restart
+  engine" panel. Now `engine_status` distinguishes "CLI not found" (a
+  fresh-install case) from "CLI present, daemon down" (a real error),
+  and the reducer routes the former to `.notInstalled` (clear install
+  CTA) instead of `.error`.
+
+### Changed (release metadata)
+- `bundle.publisher` / `bundle.copyright` / `bundle.homepage` /
+  `bundle.license` are now populated. Without them the `.deb` showed
+  `Maintainer: vaner` and the Windows installer showed `Publisher:
+  Unknown`.
+- `Cargo.toml` `[package].authors` and `homepage` populated to match.
+- `package.json` carries `author`, `license`, `homepage`, `repository`.
+
+### Added (release-time guards)
+- `release.yml` refuses to build a release when:
+  - `bundle.publisher`, `bundle.copyright`, `bundle.homepage`,
+    `bundle.license`, or `bundle.shortDescription` is empty in
+    `tauri.conf.json`.
+  - The version triple (`tauri.conf.json`, `package.json`,
+    `src-tauri/Cargo.toml`) drifts apart.
+  - `src-tauri/Cargo.toml` is missing `[package].authors`.
+
+  Same shape as the existing fingerprint / pubkey placeholder checks.
+  Means a future "shipped a release with placeholder maintainer"
+  failure is impossible at the workflow level, not just by convention.
+
 ## [0.2.2] - 2026-05-01
 
 ### Late additions (post-redesign, before tag)

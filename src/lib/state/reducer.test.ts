@@ -20,6 +20,7 @@ const reachableStatus = (
   override: Partial<EngineStatus> = {},
 ): EngineStatus => ({
   reachable: true,
+  cliMissing: false,
   filesWatched: 12,
   sourcesCount: 3,
   uptimeMinutes: 14,

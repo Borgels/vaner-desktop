@@ -29,14 +29,23 @@
 </script>
 
 <div class="quiet-shell">
-  <header class="quiet-shell__head">
-    <span class="quiet-shell__brand">
+  <!-- The header is the natural drag handle for the borderless popover.
+       Decorationless windows on Linux can't be moved by the compositor
+       without an explicit `data-tauri-drag-region`; making the whole
+       header draggable matches what users expect. The brand + state
+       label have no click handlers, so making them inert is fine. -->
+  <header class="quiet-shell__head" data-tauri-drag-region>
+    <span class="quiet-shell__brand" data-tauri-drag-region>
       <VMark size={22} satelliteState={markState} breathing={breathingMark} />
-      <span class="quiet-shell__wordmark">
-        vaner<span class="quiet-shell__cursor">_</span>
+      <span class="quiet-shell__wordmark" data-tauri-drag-region>
+        vaner<span class="quiet-shell__cursor" data-tauri-drag-region>_</span>
       </span>
     </span>
-    <span class="quiet-shell__state" style:color={stateLabelTint ?? undefined}>
+    <span
+      class="quiet-shell__state"
+      data-tauri-drag-region
+      style:color={stateLabelTint ?? undefined}
+    >
       {stateLabel}
     </span>
   </header>
