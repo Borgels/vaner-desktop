@@ -1,6 +1,22 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.2] - 2026-05-01
+
+### Late additions (post-redesign, before tag)
+
+After the popover redesign landed, three more PRs went into 0.2.2:
+
+- **Companion panes + popover pinning + diagnostics surface** (#10
+  follow-up): broke the companion window into a clean three-column
+  layout, added a Diagnostics pane with live engine probes, and
+  promoted "pin popover" from a dev hack to a real menu item.
+- **UX-feedback pass**: flatter setup wizard layout, real per-step
+  progress instead of a fake bar, drag handles on the popover
+  footer, more forgiving cursor targets across the chrome.
+- **Final-slide wizard verification panel** (#11): the four-layer
+  leverage stack (MCP, primer, skill, plugin/hook) now reports
+  per-client status on the last wizard slide so first-run users see
+  exactly what was wired before they leave the flow.
 
 ### Changed (0.2.2 — full popover redesign matching macOS)
 
