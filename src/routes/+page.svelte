@@ -34,6 +34,11 @@
 </script>
 
 <div class="popover-root">
+  <!-- Decorationless windows on Linux can't be moved by the compositor
+       without an explicit drag region. The thin strip below is invisible
+       but lets the user grab and reposition the popover. -->
+  <div class="drag-handle" data-tauri-drag-region aria-hidden="true"></div>
+
   <UpdateBanner />
 
   {#if $vanerState.kind === "engineMissing"}
@@ -81,6 +86,14 @@
     background: var(--vd-bg-0);
     color: var(--vd-fg-1);
   }
+  .drag-handle {
+    flex: 0 0 8px;
+    height: 8px;
+    width: 100%;
+    cursor: grab;
+    -webkit-app-region: drag;
+  }
+  .drag-handle:active { cursor: grabbing; }
   .popover-root > :global(.quiet-shell) {
     flex: 1 1 auto;
     min-height: 0;

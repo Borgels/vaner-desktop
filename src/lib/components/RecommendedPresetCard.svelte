@@ -1,173 +1,199 @@
 <!--
-  Recommended-preset card — the wizard's WS11 step that surfaces the
-  daemon's hardware-driven model recommendation before apply.
+  Recommended setup card.
 
-  Three rendering modes:
+  v0.2.3 simplification (per user feedback):
+    - Single flat card; the wizard's outer slide no longer wraps it in
+      another card-like header.
+    - Drops the "Setup will…" install-plan list and the runner/model
+      availability chips. Hardware + chosen model is enough.
+    - Adds a Light / Medium / Heavy segmented switch backed by the
+      registry's alternatives list, so power users can override the
+      automatic pick. Active size + model id renders as a single muted
+      caption underneath.
 
-   1. Full payload (Vaner v0.8.8+ with non-empty registry): show
-      accelerator + working memory + selected model + alternatives.
-   2. Budget-only (Vaner v0.8.8 with empty registry — dev checkout
-      that hasn't run scripts/refresh_recommended_models.py): show
-      accelerator + memory but explain Vaner will pick at runtime.
-   3. CLI-unavailable / pre-0.8.8 daemon: the Tauri command's
-      synthetic fallback comes back with generator='desktop-fallback:
-      cli-unavailable'. Fall through to whatever the existing
-      hardware_profile probe knows so the card still surfaces the
-      tier + GPU rather than misleading "couldn't read this machine"
-      copy.
+  The override id is reported via the `selectedModelId` bindable prop;
+  the wizard reads it on apply and runs `vaner config set backend.model`
+  after the policy bundle is written.
 -->
 <script lang="ts">
-  import V1Kicker from "$lib/components/primitives/V1Kicker.svelte";
   import V1Body from "$lib/components/primitives/V1Body.svelte";
   import Spinner from "$lib/components/primitives/Spinner.svelte";
-  import type { ModelsRecommendedPayload } from "$lib/stores/setup.js";
+  import type {
+    ModelsRecommendedPayload,
+    RecommendedModelEntry,
+  } from "$lib/stores/setup.js";
   import type { HardwareProfile } from "$lib/contract/setup-types.js";
+
+  type SizeKey = "light" | "medium" | "heavy";
 
   type Props = {
     payload: ModelsRecommendedPayload | null;
     loading: boolean;
-    /** Hardware silhouette from the existing `hardware_profile` Tauri
-     *  command — used as a fallback when the daemon CLI is too old
-     *  to produce the budget payload. */
     hardware?: HardwareProfile | null;
+    /** Bound: the model id the user has chosen (may equal the auto pick). */
+    selectedModelId?: string | null;
   };
-  const { payload, loading, hardware = null }: Props = $props();
+  let {
+    payload,
+    loading,
+    hardware = null,
+    selectedModelId = $bindable(null),
+  }: Props = $props();
 
-  // Detect the synthetic-fallback shape produced by setup.rs when the
-  // CLI doesn't support `models-recommended`. Distinguishes pre-0.8.8
-  // daemons from genuine empty registries.
-  const cliUnavailable = $derived(
-    payload?.registry?.generator === "desktop-fallback:cli-unavailable",
+  const autoPick = $derived<RecommendedModelEntry | null>(
+    payload?.user?.selected_model ?? payload?.selected ?? null,
+  );
+  const runtime = $derived(payload?.user?.selected_runtime ?? null);
+
+  // Bucket every available model (auto pick + alternatives) into a
+  // size lane. The lane thresholds are intentionally crude — the goal is
+  // a one-glance choice, not a fine-grained slider.
+  const allCandidates = $derived<RecommendedModelEntry[]>(
+    [autoPick, ...(payload?.alternatives ?? [])]
+      .filter((m): m is RecommendedModelEntry => Boolean(m))
+      .filter(
+        (m, idx, arr) =>
+          arr.findIndex((other) => modelKey(other) === modelKey(m)) === idx,
+      ),
   );
 
-  function tierLabel(tier: string | undefined): string {
-    switch (tier) {
-      case "high_performance": return "High-performance system";
-      case "capable": return "Capable system";
-      case "light": return "Lightweight machine";
-      default: return "Your machine";
-    }
+  function modelKey(m: RecommendedModelEntry): string {
+    return m.model_id ?? m.id ?? m.family ?? "";
   }
 
-  function gpuLabel(gpu: string | undefined): string | null {
-    if (!gpu || gpu === "none") return null;
-    return {
-      nvidia: "NVIDIA GPU",
-      amd: "AMD GPU",
-      apple_silicon: "Apple Silicon",
-      integrated: "integrated graphics",
-    }[gpu] ?? null;
+  function modelMemoryGb(m: RecommendedModelEntry): number {
+    return (
+      m.recommended_effective_memory_gb ??
+      m.min_effective_memory_gb ??
+      m.min_effective_gb_q4 ??
+      0
+    );
   }
 
-  const accelerator = $derived(payload?.budget?.accelerator ?? null);
-  const acceleratorLabel = $derived.by(() => {
-    if (!accelerator) return null;
-    return {
-      nvidia: "NVIDIA GPU",
-      amd: "AMD GPU",
-      apple_silicon: "Apple Silicon",
-      integrated: "integrated graphics",
-      cpu_only: "CPU only",
-      cluster: "multi-GPU / datacenter accelerator",
-    }[accelerator];
+  function bucketFor(m: RecommendedModelEntry): SizeKey {
+    const gb = modelMemoryGb(m);
+    if (gb <= 12) return "light";
+    if (gb <= 24) return "medium";
+    return "heavy";
+  }
+
+  // Pick one model per bucket — prefer the registry's auto pick when it
+  // belongs to the bucket, otherwise the candidate with the lowest memory
+  // footprint inside that bucket (most installable).
+  const byBucket = $derived<Record<SizeKey, RecommendedModelEntry | null>>({
+    light: pickForBucket("light"),
+    medium: pickForBucket("medium"),
+    heavy: pickForBucket("heavy"),
   });
 
-  const budgetGb = $derived(payload?.budget?.effective_gb_q4 ?? null);
-  const gpuCount = $derived(payload?.budget?.gpu_count ?? null);
-  const selected = $derived(payload?.selected ?? null);
-  const alternatives = $derived(
-    (payload?.alternatives ?? []).filter((m: { id: string }) => m.id !== selected?.id),
-  );
-  const registryEmpty = $derived((payload?.registry?.model_count ?? 0) === 0);
+  function pickForBucket(bucket: SizeKey): RecommendedModelEntry | null {
+    const inBucket = allCandidates.filter((m) => bucketFor(m) === bucket);
+    if (inBucket.length === 0) return null;
+    if (autoPick && bucketFor(autoPick) === bucket) return autoPick;
+    return inBucket.sort((a, b) => modelMemoryGb(a) - modelMemoryGb(b))[0];
+  }
 
-  // True when we have NO budget payload AND no fallback hardware — the
-  // only case where we should claim hardware detection failed.
-  const trueHardwareUnknown = $derived(!payload?.budget && !hardware);
+  // Default the user's pick to whichever bucket the auto-recommendation
+  // lives in. The user can override; the override id is what gets
+  // persisted as `backend.model` after apply.
+  const autoBucket = $derived<SizeKey>(autoPick ? bucketFor(autoPick) : "medium");
+  let activeBucket = $state<SizeKey | null>(null);
+  const effectiveBucket = $derived<SizeKey>(activeBucket ?? autoBucket);
+  const activeModel = $derived<RecommendedModelEntry | null>(
+    byBucket[effectiveBucket] ?? autoPick,
+  );
+
+  // Push the active id into the bindable prop whenever it changes.
+  $effect(() => {
+    selectedModelId = activeModel ? modelKey(activeModel) : null;
+  });
+
+  function acceleratorLabel(): string {
+    if (payload?.user?.detected_accelerator) return payload.user.detected_accelerator;
+    if (hardware?.gpu_devices?.length) {
+      return hardware.gpu_devices
+        .map((device) => {
+          if (device.memory_kind === "vram" && device.memory_display_gb) {
+            return `${device.name} (${device.memory_display_gb} GB VRAM)`;
+          }
+          if (device.memory_kind === "unified" && hardware.memory_display_gb) {
+            return `${device.name} (${hardware.memory_display_gb} GB unified memory)`;
+          }
+          return device.name;
+        })
+        .join(", ");
+    }
+    if (hardware?.gpu && hardware.gpu !== "none") {
+      const label = {
+        nvidia: "NVIDIA GPU",
+        amd: "AMD GPU",
+        apple_silicon: "Apple Silicon",
+        integrated: "integrated graphics",
+      }[hardware.gpu];
+      const memory = hardware.gpu_vram_gb
+        ? ` (${hardware.gpu_vram_gb} GB VRAM)`
+        : hardware.memory_is_unified && hardware.memory_display_gb
+          ? ` (${hardware.memory_display_gb} GB unified memory)`
+          : "";
+      return `${label}${memory}`;
+    }
+    if (hardware?.memory_display_gb) return `CPU (${hardware.memory_display_gb} GB system memory)`;
+    if (hardware?.ram_gb) return `CPU (${hardware.ram_gb} GiB system memory)`;
+    return "This computer";
+  }
+
+  function modelCaption(m: RecommendedModelEntry | null): string {
+    if (!m) return "";
+    const name = m.display_name ?? m.family ?? m.id ?? "Vaner local model";
+    const id = m.model_id ?? m.id ?? "";
+    const runtimeLabel = runtime?.label ?? m.runtime_label ?? m.runtime ?? "local runner";
+    const idHint = id && id !== name ? ` · ${id}` : "";
+    return `${runtimeLabel} · ${name}${idHint}`;
+  }
+
+  const SIZE_HINTS: Record<SizeKey, { label: string; hint: string }> = {
+    light: { label: "Light", hint: "≤12 GB" },
+    medium: { label: "Medium", hint: "12–24 GB" },
+    heavy: { label: "Heavy", hint: "24 GB+" },
+  };
 </script>
 
 <section class="card">
-  <V1Kicker text="Recommended for your machine" color="var(--vd-amber)" />
-
   {#if loading}
-    <div class="loading"><Spinner size={16} /><span>Reading hardware…</span></div>
-  {:else if trueHardwareUnknown}
-    <h2 class="title">We couldn't read this machine.</h2>
-    <V1Body
-      muted
-      text="Vaner will pick a model from your local runtime when it starts. You can swap it later in Companion → Models."
-    />
-  {:else if !payload?.budget}
-    <!--
-      Budget unknown but we have a HardwareProfile from the existing
-      `hardware_profile` Tauri command. Surface what we know rather
-      than misleading the user that hardware detection failed.
-    -->
-    <h2 class="title">
-      {tierLabel(hardware?.tier)}{#if gpuLabel(hardware?.gpu)} · {gpuLabel(hardware?.gpu)}{/if}
-    </h2>
-    {#if hardware?.ram_gb}
-      <V1Body muted text={`${hardware.ram_gb} GB RAM${hardware.gpu_vram_gb ? ` · ${hardware.gpu_vram_gb} GB VRAM` : ""}`} />
-    {/if}
-    <p class="fallback">
-      {#if cliUnavailable}
-        Update Vaner to v0.8.8+ for hardware-tuned model recommendations.
-        For now the engine will pick a model from your local runtime
-        when it starts — swap later in Companion → Models.
-      {:else}
-        Vaner will pick a model from your local runtime when it starts.
-        You can swap it later in Companion → Models.
-      {/if}
-    </p>
+    <div class="loading"><Spinner size={16} /><span>Checking this computer…</span></div>
   {:else}
-    <h2 class="title">
-      {#if acceleratorLabel}
-        {acceleratorLabel}
-        {#if budgetGb !== null}· {budgetGb.toFixed(0)} GB working memory{/if}
-      {/if}
-    </h2>
+    <div class="row">
+      <span class="label">Computer</span>
+      <strong>{acceleratorLabel()}</strong>
+    </div>
 
-    {#if gpuCount && gpuCount > 1}
-      <V1Body muted text={`${gpuCount} GPUs detected`} />
-    {/if}
-
-    {#if registryEmpty}
-      <p class="fallback">
-        Vaner will pick a model from your local runtime when it starts.
-        You can swap it later in Companion → Models.
-      </p>
-    {:else if selected}
-      <div class="model">
-        <span class="family">{selected.family}</span>
-        <span class="params">≈ {selected.params_b.toFixed(0)}B parameters</span>
-        <span class="id">{selected.id}</span>
+    {#if allCandidates.length > 0}
+      <div class="row">
+        <span class="label">Model size</span>
+        <div class="seg" role="radiogroup" aria-label="Local model size">
+          {#each (Object.keys(SIZE_HINTS) as SizeKey[]) as bucket (bucket)}
+            {@const enabled = Boolean(byBucket[bucket])}
+            <button
+              type="button"
+              role="radio"
+              class="seg-btn"
+              class:on={enabled && effectiveBucket === bucket}
+              aria-checked={enabled && effectiveBucket === bucket}
+              disabled={!enabled}
+              onclick={() => (activeBucket = bucket)}
+            >
+              <span>{SIZE_HINTS[bucket].label}</span>
+              <span class="hint">{SIZE_HINTS[bucket].hint}</span>
+            </button>
+          {/each}
+        </div>
+        <span class="caption">{modelCaption(activeModel)}</span>
       </div>
-      {#if alternatives.length > 0}
-        <details class="alts">
-          <summary>Alternatives ({alternatives.length})</summary>
-          <ul>
-            {#each alternatives as alt (alt.id)}
-              <li>
-                <span class="alt-family">{alt.family}</span>
-                <span class="alt-id">{alt.id}</span>
-                <span class="alt-params">{alt.params_b.toFixed(0)}B</span>
-              </li>
-            {/each}
-          </ul>
-        </details>
-      {/if}
     {:else}
-      <p class="fallback">
-        No model in our registry fits this machine yet. Vaner will fall
-        back to whatever's loaded in your local runtime.
-      </p>
-    {/if}
-
-    {#if payload.budget.notes && payload.budget.notes.length > 0}
-      <ul class="notes">
-        {#each payload.budget.notes as note (note)}
-          <li>{note}</li>
-        {/each}
-      </ul>
+      <V1Body
+        muted
+        text="Vaner will choose the safest local setup it can verify on this computer."
+      />
     {/if}
   {/if}
 </section>
@@ -176,8 +202,8 @@
   .card {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 18px 22px;
+    gap: 14px;
+    padding: 16px 18px;
     background: var(--vd-bg-1);
     border: 0.5px solid var(--vd-line);
     border-radius: var(--vd-r-card);
@@ -188,70 +214,62 @@
     align-items: center;
     gap: 10px;
     color: var(--vd-fg-2);
-  }
-  .title {
-    font-family: var(--vd-font);
-    font-size: 18px;
-    font-weight: 500;
-    letter-spacing: -0.15px;
-    margin: 0;
-    color: var(--vd-fg-1);
-  }
-  .fallback {
     font-size: 13px;
-    line-height: 1.5;
-    color: var(--vd-fg-2);
-    margin: 0;
   }
-  .model {
+  .row {
     display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 8px 12px;
-    margin-top: 4px;
+    flex-direction: column;
+    gap: 4px;
   }
-  .family {
+  .label {
+    font-size: 11px;
+    color: var(--vd-fg-3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  strong {
     font-size: 14px;
+    line-height: 1.35;
     font-weight: 500;
     color: var(--vd-fg-1);
   }
-  .params {
-    font-size: 12px;
-    color: var(--vd-fg-2);
+  .seg {
+    display: inline-flex;
+    border: 0.5px solid var(--vd-line);
+    border-radius: var(--vd-r-chip, 8px);
+    overflow: hidden;
+    align-self: flex-start;
+    margin-top: 2px;
   }
-  .id {
-    font-family: var(--vd-mono);
-    font-size: 11px;
-    color: var(--vd-fg-3);
-  }
-  .alts {
-    margin-top: 6px;
-    font-size: 12px;
-    color: var(--vd-fg-2);
-  }
-  .alts summary {
-    cursor: pointer;
-    user-select: none;
-  }
-  .alts ul {
-    margin: 6px 0 0;
-    padding-left: 14px;
-    list-style: disc;
-    display: flex;
+  .seg-btn {
+    display: inline-flex;
     flex-direction: column;
-    gap: 3px;
-  }
-  .alt-family { color: var(--vd-fg-2); margin-right: 8px; }
-  .alt-id { font-family: var(--vd-mono); font-size: 11px; color: var(--vd-fg-3); margin-right: 8px; }
-  .alt-params { font-size: 11px; color: var(--vd-fg-3); }
-  .notes {
-    margin: 6px 0 0;
-    padding-left: 14px;
-    list-style: disc;
-    font-size: 11px;
-    color: var(--vd-fg-3);
-    display: flex;
-    flex-direction: column;
+    align-items: center;
     gap: 2px;
+    padding: 6px 14px;
+    background: transparent;
+    color: var(--vd-fg-2);
+    border: none;
+    border-right: 0.5px solid var(--vd-line);
+    cursor: pointer;
+    font: inherit;
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+  .seg-btn:last-child { border-right: none; }
+  .seg-btn:hover:not(:disabled) { background: var(--vd-bg-2); }
+  .seg-btn.on {
+    background: color-mix(in srgb, var(--vd-amber) 16%, var(--vd-bg-1));
+    color: var(--vd-fg-1);
+  }
+  .seg-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .seg-btn .hint {
+    font-size: 10px;
+    color: var(--vd-fg-3);
+  }
+  .caption {
+    font-size: 11px;
+    color: var(--vd-fg-3);
+    font-family: var(--vd-font-mono, monospace);
+    margin-top: 6px;
   }
 </style>

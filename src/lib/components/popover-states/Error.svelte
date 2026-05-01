@@ -11,9 +11,46 @@
   import V1GhostButton from "$lib/components/primitives/V1GhostButton.svelte";
   import PopoverFooter from "$lib/components/PopoverFooter.svelte";
   import type { EngineError } from "$lib/state/types.js";
+  import { invoke } from "@tauri-apps/api/core";
+  import { showToast } from "$lib/stores/toast.js";
 
   type Props = { engine: EngineError };
   const { engine }: Props = $props();
+
+  let restarting = $state(false);
+
+  async function restartEngine() {
+    if (restarting) return;
+    restarting = true;
+    try {
+      const result = await invoke<string>("diagnostics_restart_engine");
+      showToast(result || "Vaner restart requested.", "success", 3500);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : `Failed to restart Vaner: ${err}`,
+        "attention",
+        4000,
+      );
+    } finally {
+      restarting = false;
+    }
+  }
+
+  async function openDiagnostics() {
+    try {
+      // Reuse the companion window's deep-link path. The Rust side
+      // listens for the `companion:navigate` event and switches the
+      // pane; opening directly with ?tab=diagnostics works equally well
+      // when the window is created fresh.
+      await invoke("open_companion", { tab: "diagnostics" });
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : `Failed to open diagnostics: ${err}`,
+        "attention",
+        4000,
+      );
+    }
+  }
 </script>
 
 <QuietShell markState="attention" stateLabel="Engine unavailable" stateLabelTint="var(--vd-st-attention)">
@@ -35,8 +72,12 @@
   {/if}
 
   <div class="actions">
-    <V1PrimaryButton title="Restart engine" tint="var(--vd-st-attention)" />
-    <V1GhostButton title="Diagnostics" />
+    <V1PrimaryButton
+      title={restarting ? "Restarting…" : "Restart engine"}
+      tint="var(--vd-st-attention)"
+      onclick={restartEngine}
+    />
+    <V1GhostButton title="Diagnostics" onclick={openDiagnostics} />
   </div>
 
   {#snippet footer()}

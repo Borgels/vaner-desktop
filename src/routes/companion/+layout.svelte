@@ -24,9 +24,12 @@
     label: string;
     showsTimeline?: boolean;
   };
+  // v0.2.3: Sources tab dropped. Vaner is an MCP server — agents call
+  // Vaner, not the other way around. The "Connect a source" framing was
+  // misleading; "Agents" already exposes the MCP-client install flow,
+  // which is the actual integration surface.
   const tabs: Tab[] = [
     { id: "prepared", label: "Prepared", showsTimeline: true },
-    { id: "sources", label: "Sources" },
     { id: "agents", label: "Agents" },
     { id: "models", label: "Models" },
     { id: "engine", label: "Engine" },
@@ -63,6 +66,10 @@
 </svelte:head>
 
 <div class="companion">
+  <!-- Companion window has decorations:false; this strip lets the user
+       drag the whole window from the empty top edge. -->
+  <div class="drag-handle" data-tauri-drag-region aria-hidden="true"></div>
+
   <aside class="sidebar">
     <header class="sidebar__brand">
       <VMark size={22} />
@@ -120,7 +127,19 @@
     background: var(--vd-bg-0);
     color: var(--vd-fg-1);
     font-family: var(--vd-font);
+    position: relative;
   }
+  .companion > .drag-handle {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 12px;
+    cursor: grab;
+    -webkit-app-region: drag;
+    z-index: 50;
+  }
+  .companion > .drag-handle:active { cursor: grabbing; }
   .sidebar {
     flex: 0 0 200px;
     display: flex;

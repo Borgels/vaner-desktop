@@ -51,3 +51,17 @@ pub async fn diagnostics_upgrade_engine() -> Result<String, String> {
         .await
         .map(|_| "Vaner engine update finished.".to_string())
 }
+
+/// Persist a local-model override via `vaner config set backend.model <id>`.
+/// Called by the Light/Medium/Heavy switcher in the recommended-setup card
+/// after `setup_apply` has written the policy bundle. The CLI handles
+/// loading/persisting `.vaner/config.toml` so we don't touch it from Rust.
+#[tauri::command]
+pub async fn set_local_model(model_id: String) -> Result<String, String> {
+    if model_id.trim().is_empty() {
+        return Err("model_id is required".to_string());
+    }
+    run_vaner(&["config", "set", "backend.model", &model_id], true)
+        .await
+        .map(|_| format!("backend.model set to {model_id}"))
+}

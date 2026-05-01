@@ -120,6 +120,7 @@ pub fn run() {
             diagnostics::diagnostics_doctor,
             diagnostics::diagnostics_restart_engine,
             diagnostics::diagnostics_upgrade_engine,
+            diagnostics::set_local_model,
             clients::clients_detect,
             clients::clients_install,
             clients::clients_install_all,

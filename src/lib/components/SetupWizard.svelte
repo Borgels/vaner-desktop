@@ -11,27 +11,11 @@
       4  Recommendation review + Apply     (preset card)
       5  Done
 
-    Custom (Customize… button on slide 4):
-      0  Welcome
-      1  Work styles
-      2  Priority                          (single-select chips, 5 choices)
-      3  Energy                            (single-select; merges
-                                             compute_posture + background_posture)
-      4  Recommendation review + Apply
-      5  Done
+  First-run does not ask normal users to choose runtimes, models,
+  quantization, backends, or compute devices. Core Vaner makes that
+  choice from the hardware profile and this one optional work-type hint.
 
-  Cloud posture is intentionally NOT asked during onboarding. It needs
-  API-key configuration the wizard doesn't perform, and cloud-LLM cost
-  dynamics can sting users who don't know which provider Vaner would
-  call. The wizard always submits `local_only`; users opt in via
-  Preferences (Companion → Preferences). The widening dance below is
-  mostly dead code — kept as a safety net in case the recommended
-  bundle itself proposes a wider cloud_posture than the existing
-  policy.
-
-  `onComplete` is called after a successful apply — the parent decides
-  what that means (close the onboarding window, or goto('/') back to
-  the popover).
+  `onComplete` is called only when the user clicks a final action.
 -->
 <script lang="ts">
   import { onMount } from "svelte";
@@ -46,6 +30,7 @@
     type ModelsRecommendedPayload,
   } from "$lib/stores/setup.js";
   import { showToast } from "$lib/stores/toast.js";
+  import { invoke } from "@tauri-apps/api/core";
   import VMark from "$lib/components/primitives/VMark.svelte";
   import V1Kicker from "$lib/components/primitives/V1Kicker.svelte";
   import V1PrimaryButton from "$lib/components/primitives/V1PrimaryButton.svelte";
@@ -73,17 +58,12 @@
   };
   const { onComplete, onSkip }: Props = $props();
 
-  // Slide indices (shared by both flows; default skips 2 + 3):
+  // Slide indices (first-run skips 2 + 3; those legacy slides are kept
+  // unreachable until the old custom-question UI is fully deleted):
   //   0 Welcome · 1 Work styles · 2 Priority · 3 Energy ·
   //   4 Recommendation review + Apply · 5 Done
   const TOTAL_SLIDES = 6;
   let slide = $state(0);
-
-  // The wizard starts in the *default* (fast) flow. Clicking "Customize…"
-  // on the recommendation review slide flips this on and rewinds to
-  // slide 2 (Priority) so the user can fan out into the full question
-  // set. Once on, it stays on for the session.
-  let customMode = $state(false);
 
   let questions = $state<SetupQuestion[]>([]);
   let workStyles = $state<WorkStyle[]>(["mixed"]);
@@ -113,6 +93,12 @@
   let applying = $state(false);
   let widening = $state<{ id: string; reasons: string[] } | null>(null);
   let appliedBundleId = $state<string | null>(null);
+  let applyError = $state<string | null>(null);
+  // Override id from the Light/Medium/Heavy switcher in the
+  // RecommendedPresetCard. When non-null and different from the registry's
+  // automatic pick, we persist it via `vaner config set backend.model`
+  // after the policy bundle is written.
+  let selectedModelId = $state<string | null>(null);
 
   const hardware = $derived($setup.hardware);
 
@@ -182,20 +168,13 @@
   }
 
   async function nextSlide() {
-    // Slide 1 (Work styles): default flow skips Priority + Energy and
-    // goes straight to the Recommendation review (slide 4); Custom
-    // walks the full path.
+    // Slide 1 (Work styles): go straight to the recommendation review.
     if (slide === 1) {
-      if (customMode) {
-        slide = 2;
-        return;
-      }
       const ok = await loadRecommendations();
       if (ok) slide = 4;
       return;
     }
-    // Slide 3 (Energy, custom-only): same parallel-fetch transition into
-    // the Recommendation review.
+    // Legacy slide 3: same transition into the recommendation review.
     if (slide === 3) {
       const ok = await loadRecommendations();
       if (ok) slide = 4;
@@ -212,44 +191,142 @@
 
   function prevSlide() {
     if (slide === 0) return;
-    // Default flow: from review (4) → Back lands on Work styles (1).
-    if (slide === 4 && !customMode) {
+    // From review (4) → Back lands on Work styles (1).
+    if (slide === 4) {
       slide = 1;
       return;
     }
     slide -= 1;
   }
 
-  function enterCustomFromReview() {
-    customMode = true;
-    slide = 2;
+  // Sequentialized apply with per-step status. Each step renders its own
+  // pending/running/done/error chip in the checklist. `applyError` /
+  // `applyErrorStep` track which step failed so Retry resumes from there
+  // instead of re-running the whole flow (e.g. don't re-write the bundle
+  // if it already succeeded and only the engine probe failed).
+  type StepId = "save_config" | "set_model" | "engine_ready";
+  type StepStatus = "pending" | "running" | "done" | "error" | "skipped";
+  type StepState = { id: StepId; label: string; status: StepStatus };
+
+  const DEFAULT_STEPS: StepState[] = [
+    { id: "save_config", label: "Save Vaner settings", status: "pending" },
+    { id: "set_model", label: "Apply model preference", status: "pending" },
+    { id: "engine_ready", label: "Confirm Vaner is ready", status: "pending" },
+  ];
+  let steps = $state<StepState[]>(DEFAULT_STEPS.map((s) => ({ ...s })));
+  let applyErrorStep = $state<StepId | null>(null);
+
+  function setStepStatus(id: StepId, status: StepStatus) {
+    steps = steps.map((s) => (s.id === id ? { ...s, status } : s));
+  }
+
+  function autoModelId(): string | null {
+    const auto = modelRecommendation?.user?.selected_model ?? modelRecommendation?.selected;
+    return auto?.model_id ?? auto?.id ?? null;
+  }
+
+  async function probeEngineReady(timeoutMs = 12_000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        const result = await invoke<unknown>("diagnostics_status");
+        if (typeof result === "object" && result !== null) {
+          // The CLI's `vaner status --json` wraps health under .health or
+          // .ok depending on version. Treat any non-error object as
+          // reachable; the user will see the cockpit's own state if
+          // something is off.
+          const probe = result as Record<string, unknown>;
+          if (probe.health || probe.ok || probe.status) return true;
+          if (Object.keys(probe).length > 0) return true;
+        }
+      } catch {
+        // Engine not yet up — keep polling.
+      }
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    return false;
   }
 
   async function doApply(confirmWidening = false) {
     applying = true;
+    applyError = null;
+    applyErrorStep = null;
+
+    // Reset any step that wasn't already done — Retry comes through here
+    // and resumes from the failed step, but we also surface a fresh run.
+    steps = steps.map((s) => (s.status === "done" ? s : { ...s, status: "pending" }));
+
     try {
-      const result = await apply({
-        answers: answers(),
-        confirm_cloud_widening: confirmWidening,
-      });
-      if (!result) return;
-      if (result.widens_cloud_posture && !result.written) {
-        widening = {
-          id: result.selected_bundle_id,
-          reasons: result.reasons,
-        };
+      // Step 1 — write the policy bundle.
+      if (steps.find((s) => s.id === "save_config")?.status !== "done") {
+        setStepStatus("save_config", "running");
+        const result = await apply({
+          answers: answers(),
+          confirm_cloud_widening: confirmWidening,
+        });
+        if (!result) {
+          setStepStatus("save_config", "error");
+          applyErrorStep = "save_config";
+          applyError = "Setup did not return a result. Check diagnostics, then retry.";
+          return;
+        }
+        if (result.widens_cloud_posture && !result.written) {
+          // Park the bundle behind the widening confirm UI; not an error.
+          setStepStatus("save_config", "pending");
+          widening = { id: result.selected_bundle_id, reasons: result.reasons };
+          return;
+        }
+        widening = null;
+        appliedBundleId = result.selected_bundle_id;
+        setStepStatus("save_config", "done");
+      }
+
+      // Step 2 — apply the user's model override (if it differs).
+      const auto = autoModelId();
+      if (selectedModelId && auto && selectedModelId !== auto) {
+        setStepStatus("set_model", "running");
+        try {
+          await invoke<string>("set_local_model", { modelId: selectedModelId });
+          setStepStatus("set_model", "done");
+        } catch (err) {
+          setStepStatus("set_model", "error");
+          applyErrorStep = "set_model";
+          applyError = err instanceof Error ? err.message : String(err);
+          return;
+        }
+      } else {
+        setStepStatus("set_model", "skipped");
+      }
+
+      // Step 3 — wait for the engine to actually answer.
+      setStepStatus("engine_ready", "running");
+      const ready = await probeEngineReady();
+      if (!ready) {
+        setStepStatus("engine_ready", "error");
+        applyErrorStep = "engine_ready";
+        applyError =
+          "Vaner saved your settings but the engine is not answering yet. " +
+          "Open Diagnostics and run 'Restart engine'.";
         return;
       }
-      widening = null;
-      appliedBundleId = result.selected_bundle_id;
-      showToast(`Setup complete: ${result.selected_bundle_id}`, "success", 3500);
-      // Hold on the success slide for a beat, then hand off.
-      setTimeout(() => {
-        void onComplete();
-      }, 900);
+      setStepStatus("engine_ready", "done");
+
+      showToast("Vaner is ready", "success", 3500);
+    } catch (err) {
+      // Whichever step was running marks itself failed via setStepStatus
+      // already; this is the unexpected branch.
+      applyError = err instanceof Error ? err.message : String(err);
     } finally {
       applying = false;
     }
+  }
+
+  function resetStepsForRetry() {
+    // Retry from scratch, except for steps that already succeeded — those
+    // stay green so we don't re-write the bundle unnecessarily.
+    applyError = null;
+    applyErrorStep = null;
+    steps = steps.map((s) => (s.status === "error" ? { ...s, status: "pending" } : s));
   }
 
   // Per-slide button labels.
@@ -257,17 +334,15 @@
     slide === 0
       ? "Get started"
       : slide === 1
-        ? customMode
-          ? "Continue"
-          : recommending
-            ? "Reading hardware…"
-            : "See recommendation"
+        ? recommending
+          ? "Checking this computer…"
+          : "Show recommendation"
         : slide === 3
           ? recommending
-            ? "Reading hardware…"
+            ? "Checking this computer…"
             : "See recommendation"
           : slide === 4
-            ? "Apply"
+            ? "Set up Vaner"
             : "Continue",
   );
   const nextDisabled = $derived(
@@ -299,12 +374,9 @@
     { value: "use_machine", label: "Use this machine", hint: "Cranked — happy to ponder overnight." },
   ];
 
-  // Step dot count is mode-aware so the dots reflect the actual flow
-  // length the user is walking through.
-  const dotCount = $derived(customMode ? 6 : 4);
+  const dotCount = 4;
   // Visible-position-of-current-slide for the dots header.
   const dotIndex = $derived.by(() => {
-    if (customMode) return slide;
     // Default flow only renders slides 0, 1, 4, 5 — collapse the gap.
     if (slide <= 1) return slide;
     if (slide === 4) return 2;
@@ -314,6 +386,10 @@
 </script>
 
 <div class="wizard">
+  <!-- Decorationless onboarding window: drag-handle strip lets the user
+       move it. Wayland may still place initial position; this fixes the
+       static-top-left feel after that. -->
+  <div class="drag-handle" data-tauri-drag-region aria-hidden="true"></div>
   <!-- Step indicator (mode-aware: default = 4 dots, custom = 6 dots). -->
   <header class="dots">
     {#each Array.from({ length: dotCount }) as _, i (i)}
@@ -327,18 +403,18 @@
       <section class="slide welcome">
         <VMark size={48} satelliteState="prepared" breathing />
         <V1Kicker text="Welcome" />
-        <h1>A quiet companion that thinks ahead.</h1>
+        <h1>Vaner sets itself up for this computer.</h1>
         <p class="lead">
-          One question, then Vaner sizes your machine and picks a
-          profile to match. Tweakable from Preferences any time.
+          Pick what you will use Vaner for, then Vaner checks your machine
+          and chooses the local setup for you.
         </p>
       </section>
     {:else if slide === 1}
       <!-- 1 · Work styles -->
       <section class="slide">
-        <V1Kicker text={customMode ? "Question 1 of 3" : "What kind of work?"} />
+        <V1Kicker text="Optional" />
         <h1>{getQuestion("work_styles")?.prompt ?? "What kinds of work?"}</h1>
-        <p class="lead">Pick all that apply.</p>
+        <p class="lead">Pick all that apply, or keep Mixed.</p>
         <div class="chips multi">
           {#each workStyleChoices() as c (c.value)}
             <button
@@ -399,37 +475,24 @@
         </div>
       </section>
     {:else if slide === 4}
-      <!-- 4 · Recommendation review + Apply -->
+      <!-- 4 · Recommendation review + Apply.
+           v0.2.3 simplification: the RecommendedPresetCard is the *only*
+           card on this slide. The earlier "card-within-a-card" framing
+           (kicker + bundle headline + bundle desc + tier badge wrapped
+           around another card) was visually noisy and the bundle name
+           is shown inside the card's caption already. -->
       <section class="slide review">
-        <V1Kicker text="Recommended for your machine" color="var(--vd-amber)" />
+        <V1Kicker text="Recommended setup" color="var(--vd-amber)" />
+        <h1>Vaner has chosen a setup for this computer.</h1>
         {#if recommendation}
-          <h1>{recommendation.bundle.label}</h1>
-          <p class="bundle-desc">{recommendation.bundle.description}</p>
-          {#if hardware?.tier}
-            <p class="tier-badge">Hardware tier · {hardware.tier}</p>
-          {/if}
-          {#if recommendation.reasons?.length}
-            <ul class="reasons">
-              {#each recommendation.reasons as r (r)}
-                <li>
-                  <span class="bullet"></span>
-                  <span>{r}</span>
-                </li>
-              {/each}
-            </ul>
-          {/if}
           <RecommendedPresetCard
             payload={modelRecommendation}
             loading={modelRecommending}
             {hardware}
+            bind:selectedModelId
           />
-          {#if !customMode}
-            <button type="button" class="customize-link" onclick={enterCustomFromReview}>
-              Customize…
-            </button>
-          {/if}
         {:else}
-          <div class="loading"><Spinner size={20} /><span>Picking a bundle…</span></div>
+          <div class="loading"><Spinner size={20} /><span>Checking this computer…</span></div>
         {/if}
       </section>
     {:else}
@@ -450,18 +513,66 @@
             <V1PrimaryButton title="Allow widening" tint="var(--vd-amber)" onclick={() => doApply(true)} />
             <V1GhostButton title="Keep local-only" onclick={() => { widening = null; slide = 4; }} />
           </div>
-        {:else if applying}
-          <div class="loading"><Spinner size={20} /><span>Saving…</span></div>
+        {:else if applying || applyError}
+          {@const isError = Boolean(applyError)}
+          <V1Kicker
+            text={isError ? "Setup needs attention" : "Setting up"}
+            color="var(--vd-amber)"
+          />
+          <h1>{isError ? "Vaner could not finish setup." : "Vaner is getting ready."}</h1>
+          <ol class="checklist">
+            {#each steps as step (step.id)}
+              <li class="step" data-status={step.status}>
+                {#if step.status === "running"}
+                  <Spinner size={14} />
+                {:else if step.status === "done"}
+                  <span class="check" aria-hidden="true">✓</span>
+                {:else if step.status === "error"}
+                  <span class="cross" aria-hidden="true">!</span>
+                {:else if step.status === "skipped"}
+                  <span class="dot" aria-hidden="true">·</span>
+                {:else}
+                  <span class="dot" aria-hidden="true">○</span>
+                {/if}
+                <span>{step.label}</span>
+                {#if step.status === "skipped"}
+                  <span class="muted">(no change needed)</span>
+                {/if}
+              </li>
+            {/each}
+          </ol>
+          {#if applyError}
+            <p class="lead">{applyError}</p>
+            <div class="actions inline">
+              <V1PrimaryButton
+                title="Retry"
+                tint="var(--vd-amber)"
+                onclick={() => { resetStepsForRetry(); void doApply(false); }}
+              />
+              <V1GhostButton
+                title="Open diagnostics"
+                onclick={() => onSkip()}
+              />
+              <V1GhostButton
+                title="Back"
+                onclick={() => { applyError = null; applyErrorStep = null; slide = 4; }}
+              />
+            </div>
+          {/if}
         {:else if appliedBundleId}
           <VMark size={48} satelliteState="prepared" />
-          <V1Kicker text="All set" color="var(--vd-st-on)" />
+          <V1Kicker text="Ready" color="var(--vd-st-on)" />
           <h1>Vaner is ready.</h1>
           <p class="lead">
-            Bundle <strong>{appliedBundleId}</strong> active. The popover
-            will start surfacing prepared moments as Vaner reads your work.
+            Vaner has saved the recommended setup. Open the small Vaner
+            window from the tray to see prepared work, switch agents, or
+            pin the window while you work.
           </p>
+          <div class="actions inline">
+            <V1PrimaryButton title="Open Vaner" tint="var(--vd-amber)" onclick={() => onComplete()} />
+          </div>
         {:else}
-          <div class="loading"><Spinner size={20} /><span>Saving…</span></div>
+          <div class="loading"><Spinner size={20} /><span>Preparing setup…</span></div>
         {/if}
       </section>
     {/if}
@@ -469,7 +580,9 @@
 
   <!-- Footer controls -->
   <footer class="ctl">
-    <V1GhostButton title="Skip for now" onclick={() => onSkip()} />
+    {#if slide < TOTAL_SLIDES - 1}
+      <V1GhostButton title="Skip for now" onclick={() => onSkip()} />
+    {/if}
     <span class="spacer"></span>
     {#if slide > 0 && slide < TOTAL_SLIDES - 1}
       <V1GhostButton title="Back" onclick={prevSlide} disabled={recommending || applying} />
@@ -495,7 +608,19 @@
     font-family: var(--vd-font);
     padding: 22px 36px 22px;
     overflow: hidden;
+    position: relative;
   }
+  .wizard > .drag-handle {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 14px;
+    cursor: grab;
+    -webkit-app-region: drag;
+    z-index: 5;
+  }
+  .wizard > .drag-handle:active { cursor: grabbing; }
   .dots {
     display: flex;
     gap: 6px;
@@ -628,61 +753,6 @@
     color: var(--vd-fg-2);
   }
 
-  /* Review slide */
-  .bundle-desc {
-    margin: 0;
-    font-size: 13px;
-    color: var(--vd-fg-2);
-    line-height: 1.55;
-  }
-  .tier-badge {
-    margin: 0;
-    font-family: var(--vd-font-mono);
-    font-size: 11px;
-    color: var(--vd-fg-3);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-  .reasons {
-    list-style: none;
-    margin: 8px 0 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .customize-link {
-    background: none;
-    border: none;
-    padding: 0;
-    margin: 8px 0 0;
-    color: var(--vd-fg-2);
-    font: inherit;
-    font-size: 12px;
-    cursor: pointer;
-    align-self: flex-start;
-  }
-  .customize-link:hover {
-    color: var(--vd-fg-1);
-    text-decoration: underline;
-  }
-  .reasons li {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-    font-size: 13px;
-    color: var(--vd-fg-2);
-    line-height: 1.5;
-  }
-  .reasons .bullet {
-    width: 5px;
-    height: 5px;
-    margin-top: 8px;
-    border-radius: 50%;
-    background: var(--vd-amber);
-    flex: 0 0 auto;
-  }
-
   .loading {
     display: inline-flex;
     align-items: center;
@@ -696,6 +766,58 @@
     margin-top: 6px;
     flex-wrap: wrap;
   }
+  .checklist {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .checklist li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--vd-fg-2);
+    font-size: 13px;
+  }
+  .step[data-status="done"] { color: var(--vd-st-on, #6cc76c); }
+  .step[data-status="error"] { color: var(--vd-st-attention, #e6b656); }
+  .step[data-status="skipped"] { color: var(--vd-fg-3); }
+  .step .check {
+    display: inline-flex;
+    width: 14px;
+    height: 14px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: var(--vd-st-on, #6cc76c);
+    color: var(--vd-bg-0, #0e0e12);
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .step .cross {
+    display: inline-flex;
+    width: 14px;
+    height: 14px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: var(--vd-st-attention, #e6b656);
+    color: var(--vd-bg-0, #0e0e12);
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .step .dot {
+    display: inline-flex;
+    width: 14px;
+    height: 14px;
+    align-items: center;
+    justify-content: center;
+    color: var(--vd-fg-4);
+    font-size: 12px;
+  }
+  .step .muted { color: var(--vd-fg-4); font-size: 11px; }
 
   .ctl {
     flex: 0 0 auto;

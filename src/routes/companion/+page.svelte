@@ -4,7 +4,6 @@
 <script lang="ts">
   import { page } from "$app/stores";
   import PreparedPane from "./panes/PreparedPane.svelte";
-  import SourcesPane from "./panes/SourcesPane.svelte";
   import AgentsPane from "./panes/AgentsPane.svelte";
   import ModelsPane from "./panes/ModelsPane.svelte";
   import EnginePane from "./panes/EnginePane.svelte";
@@ -16,9 +15,9 @@
 
 {#if active === "prepared"}
   <PreparedPane />
-{:else if active === "sources"}
-  <SourcesPane />
-{:else if active === "agents"}
+{:else if active === "agents" || active === "sources"}
+  <!-- 'sources' aliased to 'agents' so any old deep-links keep working
+       and the popover's old InstalledNotConnected CTA still resolves. -->
   <AgentsPane />
 {:else if active === "models"}
   <ModelsPane />
