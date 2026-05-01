@@ -244,6 +244,47 @@ pub async fn setup_recommend(answers: Value) -> Result<Value, String> {
         .map_err(|e| format!("could not parse setup recommend output: {e}"))
 }
 
+/// `vaner setup models-recommended --json` — hardware-driven model
+/// recommendation. Returns `{registry, budget, selected, alternatives}`.
+/// When the daemon CLI predates v0.8.8 (no models-recommended
+/// subcommand), the shell-out fails and we surface a synthetic empty
+/// payload so the desktop wizard's preset card can render its fallback
+/// copy ("Vaner will pick a model when the daemon starts").
+#[tauri::command]
+pub async fn models_recommended(work_styles: Option<String>) -> Result<Value, String> {
+    let mut args: Vec<String> = vec!["models-recommended".into()];
+    if let Some(styles) = work_styles {
+        if !styles.trim().is_empty() {
+            args.push("--work-styles".into());
+            args.push(styles);
+        }
+    }
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+    let stdout = match run_vaner_setup_json(&arg_refs, None, true).await {
+        Ok(s) => s,
+        Err(_) => {
+            // CLI doesn't support the subcommand (pre-0.8.8 daemon).
+            // Hand back the shape the wizard expects with everything null
+            // so the fallback copy renders without a second request.
+            return Ok(serde_json::json!({
+                "registry": {
+                    "schema_version": null,
+                    "generated_at": null,
+                    "generator": "desktop-fallback:cli-unavailable",
+                    "model_count": 0,
+                    "sources": []
+                },
+                "budget": null,
+                "selected": null,
+                "alternatives": [],
+            }));
+        }
+    };
+    serde_json::from_str::<Value>(&stdout)
+        .map_err(|e| format!("could not parse models-recommended output: {e}"))
+}
+
 /// `vaner setup apply --json` — persist answers (or an explicit
 /// bundle id) to `.vaner/config.toml`.
 ///

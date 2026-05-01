@@ -22,9 +22,14 @@ use tokio::sync::Mutex;
 
 use vaner_contract::HttpEngineClient;
 
+pub mod agent_detector;
 pub mod clients;
 pub mod commands;
+pub mod companion;
+pub mod engine;
+pub mod onboarding;
 pub mod popover;
+pub mod prepared_work_endpoint;
 pub mod session;
 pub mod setup;
 pub mod sse_task;
@@ -101,7 +106,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::active_predictions,
+            commands::prepared_work,
+            commands::prepared_work_action,
             commands::adopt_prediction,
+            commands::app_quit,
+            commands::window_hide,
             updater::install_update,
             clients::clients_detect,
             clients::clients_install,
@@ -110,12 +119,19 @@ pub fn run() {
             clients::clients_doctor,
             setup::setup_questions,
             setup::setup_recommend,
+            setup::models_recommended,
             setup::setup_apply,
             setup::setup_status,
             setup::policy_show,
             setup::policy_refresh,
             setup::hardware_profile,
             setup::deep_run_defaults,
+            companion::open_companion,
+            companion::close_companion,
+            onboarding::open_onboarding,
+            onboarding::close_onboarding,
+            engine::engine_status,
+            agent_detector::detect_agents,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

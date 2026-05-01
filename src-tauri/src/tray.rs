@@ -5,14 +5,23 @@
 //!
 //! Menu structure:
 //!
-//!     ┌──────────────────┐
-//!     │  Open Vaner      │  ← toggles the popover
-//!     ├──────────────────┤
-//!     │  Preferences…    │  ← emits menu:open-preferences event
-//!     │  Pause           │  ← emits menu:toggle-pause event
-//!     ├──────────────────┤
-//!     │  Quit            │  ← app.exit(0)
-//!     └──────────────────┘
+//! ```text
+//! ┌──────────────────┐
+//! │  Open Vaner      │  ← popover::show
+//! │  Show Companion… │  ← opens the companion window
+//! ├──────────────────┤
+//! │  Preferences…    │  ← opens companion window on Preferences pane
+//! │  Pause / Resume  │  ← emits menu:toggle-pause; Svelte flips
+//! │                  │    the isPaused store + .paused popover
+//! ├──────────────────┤
+//! │  Quit            │  ← app.exit(0)
+//! └──────────────────┘
+//! ```
+//!
+//! `on_tray_icon_event` forwards to `tauri_plugin_positioner::on_tray_event`
+//! so the positioner plugin's tray-bounds cache stays populated. Without
+//! that, `popover::anchor` would always have to fall through to its
+//! TopRight fallback.
 
 use tauri::{
     AppHandle, Emitter, Runtime,
@@ -20,12 +29,13 @@ use tauri::{
     tray::TrayIconBuilder,
 };
 
-use crate::popover;
+use crate::{companion, popover};
 
 pub const TRAY_ID: &str = "main";
 
 /// Menu item IDs — stringly-typed per Tauri's API.
 const ID_OPEN: &str = "open";
+const ID_COMPANION: &str = "companion";
 const ID_PREFERENCES: &str = "preferences";
 const ID_PAUSE: &str = "pause";
 const ID_QUIT: &str = "quit";
@@ -47,16 +57,17 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             ID_OPEN => {
                 let _ = popover::show(app);
             }
+            ID_COMPANION => {
+                let _ = companion::open_window(app, None);
+            }
             ID_PREFERENCES => {
-                // Preferences window TBD in a follow-up; for now the
-                // Svelte side shows a "coming soon" toast when it
-                // hears this.
-                let _ = app.emit("menu:open-preferences", ());
+                let _ = companion::open_window(app, Some("preferences".into()));
             }
             ID_PAUSE => {
-                // Pause state lives in the Svelte store for now; the
-                // Rust side will forward to the daemon when pause is
-                // wired (CONTRACT.md POST /engine/pause is Tier B).
+                // Forward to the Svelte side. The popover's
+                // app-state store listens for `menu:toggle-pause`
+                // and flips the isPaused flag, which the reducer
+                // turns into the .paused popover state.
                 let _ = app.emit("menu:toggle-pause", ());
             }
             ID_QUIT => {
@@ -78,11 +89,19 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
 fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let open = MenuItem::with_id(app, ID_OPEN, "Open Vaner", true, None::<&str>)?;
+    let companion = MenuItem::with_id(app, ID_COMPANION, "Show Companion…", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let prefs = MenuItem::with_id(app, ID_PREFERENCES, "Preferences…", true, None::<&str>)?;
-    let pause = MenuItem::with_id(app, ID_PAUSE, "Pause", true, None::<&str>)?;
+    // UI-level mute toggle. Daemon-side POST /engine/pause is still
+    // Tier B; today this just flips an isPaused flag the popover
+    // reducer reads to enter the .paused state. Re-wire to the
+    // engine endpoint when CONTRACT.md ships it.
+    let pause = MenuItem::with_id(app, ID_PAUSE, "Pause / Resume", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, ID_QUIT, "Quit", true, None::<&str>)?;
 
-    Menu::with_items(app, &[&open, &sep1, &prefs, &pause, &sep2, &quit])
+    Menu::with_items(
+        app,
+        &[&open, &companion, &sep1, &prefs, &pause, &sep2, &quit],
+    )
 }

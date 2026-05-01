@@ -1,8 +1,7 @@
 # Tauri icons
 
 Sourced from `docs/handoff/vaner-desktop/brand/png/` in the Vaner
-brand package (canonical copy:
-`/home/abo/Downloads/Vaner Control (2)/handoff/vaner-desktop/brand/`).
+brand package.
 
 | File                 | Source             | Size     | Use                              |
 |----------------------|--------------------|----------|----------------------------------|

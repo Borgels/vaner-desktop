@@ -1,211 +1,88 @@
+<!--
+  Popover root. The reducer at $lib/stores/vaner-state.js produces the
+  current `VanerState`; we switch on its `kind` and render the matching
+  state component. The popover ships with a permanent ToastStack +
+  UpdateBanner overlay, since both surface across every state.
+-->
 <script lang="ts">
   import { onMount } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
-  import { predictions, startPredictionStream } from "$lib/stores/predictions.js";
-  import { showToast } from "$lib/stores/toast.js";
-  import { isAdoptable } from "$lib/contract/types.js";
+  import { startPreparedWorkPolling } from "$lib/stores/prepared-work.js";
+  import { startPredictionStream } from "$lib/stores/predictions.js";
+  import { vanerState } from "$lib/stores/vaner-state.js";
+  import EngineMissing from "$lib/components/popover-states/EngineMissing.svelte";
+  import NotInstalled from "$lib/components/popover-states/NotInstalled.svelte";
+  import InstalledNotConnected from "$lib/components/popover-states/InstalledNotConnected.svelte";
+  import Learning from "$lib/components/popover-states/Learning.svelte";
+  import Watching from "$lib/components/popover-states/Watching.svelte";
+  import Prepared from "$lib/components/popover-states/Prepared.svelte";
+  import PreparedWork from "$lib/components/popover-states/PreparedWork.svelte";
+  import Attention from "$lib/components/popover-states/Attention.svelte";
+  import PermissionNeeded from "$lib/components/popover-states/PermissionNeeded.svelte";
+  import NoActiveAgent from "$lib/components/popover-states/NoActiveAgent.svelte";
+  import ActivePredictions from "$lib/components/popover-states/ActivePredictions.svelte";
+  import VanerError from "$lib/components/popover-states/Error.svelte";
+  import Idle from "$lib/components/popover-states/Idle.svelte";
+  import Paused from "$lib/components/popover-states/Paused.svelte";
+  import UpdateBanner from "$lib/components/UpdateBanner.svelte";
+  import ToastStack from "$lib/components/ToastStack.svelte";
+  import FirstRunGuidance from "$lib/components/FirstRunGuidance.svelte";
 
   onMount(() => {
     startPredictionStream();
+    startPreparedWorkPolling();
   });
-
-  async function adopt(id: string) {
-    try {
-      const intent = await invoke<string>("adopt_prediction", { predictionId: id });
-      showToast(
-        `Prediction adopted — ${intent}. Your agent's next prompt will use this package.`,
-        "success",
-        5000,
-      );
-    } catch (err) {
-      const msg = typeof err === "string" ? err : "Couldn't adopt that prediction.";
-      showToast(msg, "attention", 5000);
-    }
-  }
 </script>
 
-<main>
-  <header class="shell-header">
-    <div class="brand">
-      <span class="wordmark">vaner</span><span class="wordmark-accent">_</span>
-    </div>
-    <div class="state-label">Pondering · {$predictions.length} active</div>
-  </header>
+<div class="popover-root">
+  <UpdateBanner />
 
-  <section class="body">
-    <div class="kicker">Vaner is thinking ahead</div>
+  {#if $vanerState.kind === "engineMissing"}
+    <EngineMissing install={$vanerState.install} />
+  {:else if $vanerState.kind === "notInstalled"}
+    <NotInstalled />
+  {:else if $vanerState.kind === "installedNotConnected"}
+    <InstalledNotConnected />
+  {:else if $vanerState.kind === "learning"}
+    <Learning progress={$vanerState.progress} />
+  {:else if $vanerState.kind === "watching"}
+    <Watching summary={$vanerState.summary} silentHours={$vanerState.silentHours} />
+  {:else if $vanerState.kind === "prepared"}
+    <Prepared lead={$vanerState.lead} supporting={$vanerState.supporting} />
+  {:else if $vanerState.kind === "preparedWork"}
+    <PreparedWork cards={$vanerState.cards} />
+  {:else if $vanerState.kind === "attention"}
+    <Attention conflict={$vanerState.conflict} />
+  {:else if $vanerState.kind === "permissionNeeded"}
+    <PermissionNeeded sources={$vanerState.sources} />
+  {:else if $vanerState.kind === "noActiveAgent"}
+    <NoActiveAgent
+      pendingCount={$vanerState.pendingCount}
+      suggestedLaunch={$vanerState.suggestedLaunch}
+    />
+  {:else if $vanerState.kind === "activePredictions"}
+    <ActivePredictions predictions={$vanerState.predictions} />
+  {:else if $vanerState.kind === "error"}
+    <VanerError engine={$vanerState.engine} />
+  {:else if $vanerState.kind === "paused"}
+    <Paused queued={$vanerState.queued} />
+  {:else}
+    <Idle />
+  {/if}
 
-    {#if $predictions.length === 0}
-      <div class="empty">
-        Nothing to show yet. If the daemon is running, new predictions
-        will stream in here.
-      </div>
-    {/if}
-
-    {#each $predictions as p (p.id)}
-      {@const adoptable = isAdoptable(p.run.readiness)}
-      <div class="row" class:dim={p.spec.hypothesis_type === "long_tail"}>
-        <div class="row-body">
-          <div class="row-label">{p.spec.label}</div>
-          <div class="row-meta">
-            <span class="pill readiness-{p.run.readiness}">{p.run.readiness}</span>
-            <span class="confidence">{Math.round(p.spec.confidence * 100)}%</span>
-          </div>
-        </div>
-        <button
-          class="adopt-btn"
-          class:primary={adoptable}
-          disabled={!adoptable}
-          onclick={() => adopt(p.id)}
-        >
-          Adopt
-        </button>
-      </div>
-    {/each}
-  </section>
-</main>
+  <FirstRunGuidance />
+  <ToastStack />
+</div>
 
 <style>
-  main {
+  .popover-root {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
-  }
-
-  .shell-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px 12px;
-    border-bottom: 0.5px solid var(--vd-hair);
-  }
-
-  .brand {
-    font-family: var(--vd-font);
-    font-size: 17px;
-    letter-spacing: 0.5px;
+    height: 100vh;
+    background: var(--vd-bg-0);
     color: var(--vd-fg-1);
   }
-
-  .wordmark-accent {
-    color: var(--vd-amber);
-  }
-
-  .state-label {
-    font-size: 10.5px;
-    font-weight: 500;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-    color: var(--vd-st-active);
-  }
-
-  .body {
-    padding: 18px 16px 14px;
-  }
-
-  .kicker {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 1.4px;
-    text-transform: uppercase;
-    color: var(--vd-st-active);
-    margin-bottom: 10px;
-  }
-
-  .empty {
-    font-size: 12.5px;
-    color: var(--vd-fg-3);
-    padding: 8px 0;
-  }
-
-  .row {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 8px 10px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 0.5px solid var(--vd-hair);
-    border-radius: 7px;
-    margin-bottom: 6px;
-  }
-
-  .row.dim .row-label {
-    color: var(--vd-fg-3);
-  }
-
-  .row-body {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .row-label {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--vd-fg-1);
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .row-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 4px;
-  }
-
-  .pill {
-    font-size: 10px;
-    font-weight: 500;
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.03);
-    color: var(--vd-fg-4);
-  }
-
-  .pill.readiness-ready {
-    color: var(--vd-st-on);
-    background: rgba(116, 194, 156, 0.18);
-  }
-  .pill.readiness-drafting {
-    color: var(--vd-st-active);
-    background: rgba(111, 191, 244, 0.15);
-  }
-  .pill.readiness-evidence_gathering,
-  .pill.readiness-grounding {
-    color: var(--vd-purple-deep);
-    background: rgba(178, 153, 209, 0.15);
-  }
-  .pill.readiness-stale {
-    color: var(--vd-st-idle);
-    background: var(--vd-hair);
-  }
-
-  .confidence {
-    font-family: var(--vd-font-mono);
-    font-size: 10.5px;
-    color: var(--vd-fg-4);
-  }
-
-  .adopt-btn {
-    font-family: var(--vd-font);
-    font-size: 12px;
-    padding: 7px 12px;
-    border-radius: 6px;
-    background: transparent;
-    border: 0.5px solid var(--vd-line);
-    color: var(--vd-fg-2);
-    cursor: pointer;
-  }
-
-  .adopt-btn.primary {
-    background: var(--vd-st-active);
-    color: var(--vd-bg-0);
-    border-color: transparent;
-    font-weight: 500;
-  }
-
-  .adopt-btn:disabled {
-    opacity: 0.4;
-    cursor: default;
+  .popover-root > :global(.quiet-shell) {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 </style>

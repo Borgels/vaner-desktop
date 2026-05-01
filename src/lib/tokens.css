@@ -1,76 +1,136 @@
 /* Vaner Desktop — shared tokens
-   Vendored from Vaner/ui/cockpit/src/styles/tokens.css so the SvelteKit
-   Linux app, the SwiftUI macOS app, and the React cockpit all render
-   the same visual language. If you edit this file, sync upstream
-   and re-vendor.
-
-   Canonical source: /home/abo/Downloads/Vaner Control (2)/handoff/vaner-desktop/desktop/tokens.css
+   Native macOS first, Vaner-branded second.
+   Uses SF system font stack. Dark + light supported.
 */
 
 :root {
-  /* Typography */
+  /* Landing-page-aligned type system
+     Space Grotesk  → display + body (the primary voice)
+     JetBrains Mono → code, UI mono, tabular figures
+     Instrument Serif → italic editorial accent ONLY — a word or two,
+                        never a full body sentence
+     Share Tech Mono → terminal blocks (used sparingly) */
   --vd-font: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
   --vd-font-text: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
   --vd-font-editorial: "Instrument Serif", "New York", "Times New Roman", serif;
   --vd-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Menlo", monospace;
   --vd-font-term: "Share Tech Mono", ui-monospace, "SF Mono", monospace;
 
-  /* Type scale */
-  --vd-t-hero: 22px;
-  --vd-t-title: 15px;
-  --vd-t-body: 13px;
-  --vd-t-label: 11px;
-  --vd-t-mini: 10px;
+  /* type scale */
+  --vd-t-hero: 22px;       /* top-of-window summary */
+  --vd-t-title: 15px;      /* card titles, section headers */
+  --vd-t-body: 13px;       /* body copy, card gists */
+  --vd-t-label: 11px;      /* small caps labels */
+  --vd-t-mini: 10px;       /* smallest */
 
-  /* Brand palette */
+  /* brand — identical to cockpit/landing */
   --vd-purple: #b299d1;
   --vd-purple-deep: #6d4f9a;
   --vd-amber: #e0a557;
   --vd-amber-deep: #b27a2e;
 
-  /* State palette (oklch where supported, hex fallback baked in) */
-  --vd-st-on: oklch(0.78 0.09 150);
-  --vd-st-learning: var(--vd-purple);
-  --vd-st-prepared: var(--vd-amber);
-  --vd-st-active: #6fbff4;
-  --vd-st-attention: #ef6a5a;
-  --vd-st-idle: oklch(0.6 0.01 90);
+  /* state palette — abstract roles */
+  --vd-st-on:        oklch(0.78 0.09 150);  /* active, calm green */
+  --vd-st-learning:  var(--vd-purple);       /* the brand color, breathing */
+  --vd-st-prepared:  var(--vd-amber);        /* ready to use */
+  --vd-st-active:    #6fbff4;                /* used right now */
+  --vd-st-attention: #ef6a5a;                /* needs attention, rare */
+  --vd-st-idle:      oklch(0.60 0.010 90);   /* idle / off-duty */
 
-  /* Dark mode surfaces (default) */
+  /* dark mode surfaces (default for menu bar popover) */
   --vd-bg-0: #1c1a1f;
   --vd-bg-1: #242127;
   --vd-bg-2: #2c2930;
-  --vd-line: rgba(255, 255, 255, 0.08);
-  --vd-hair: rgba(255, 255, 255, 0.05);
+  --vd-line: rgba(255,255,255,0.08);
+  --vd-hair: rgba(255,255,255,0.05);
   --vd-fg-1: #f2eee6;
-  --vd-fg-2: rgba(242, 238, 230, 0.72);
-  --vd-fg-3: rgba(242, 238, 230, 0.52);
-  --vd-fg-4: rgba(242, 238, 230, 0.36);
+  --vd-fg-2: rgba(242,238,230,0.72);
+  --vd-fg-3: rgba(242,238,230,0.52);
+  --vd-fg-4: rgba(242,238,230,0.36);
 
-  /* Radii */
+  /* radii */
   --vd-r-pop: 14px;
   --vd-r-card: 10px;
   --vd-r-chip: 6px;
 
-  /* Shadow */
-  --vd-shadow-pop:
-    0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 10px 40px rgba(0, 0, 0, 0.35),
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
+  /* shadow — macOS popover */
+  --vd-shadow-pop: 0 0 0 0.5px rgba(0,0,0,0.4),
+                   0 10px 40px rgba(0,0,0,0.35),
+                   inset 0 0.5px 0 rgba(255,255,255,0.06);
 }
 
+/* light theme (for the companion window in system light mode) */
 .vd-light {
   --vd-bg-0: #faf7f1;
   --vd-bg-1: #ffffff;
   --vd-bg-2: #f2ede3;
-  --vd-line: rgba(0, 0, 0, 0.08);
-  --vd-hair: rgba(0, 0, 0, 0.05);
+  --vd-line: rgba(0,0,0,0.08);
+  --vd-hair: rgba(0,0,0,0.05);
   --vd-fg-1: #1a1720;
-  --vd-fg-2: rgba(26, 23, 32, 0.68);
-  --vd-fg-3: rgba(26, 23, 32, 0.48);
-  --vd-fg-4: rgba(26, 23, 32, 0.32);
+  --vd-fg-2: rgba(26,23,32,0.68);
+  --vd-fg-3: rgba(26,23,32,0.48);
+  --vd-fg-4: rgba(26,23,32,0.32);
   --vd-purple: var(--vd-purple-deep);
   --vd-amber: var(--vd-amber-deep);
-  --vd-shadow-pop:
-    0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 10px 30px rgba(0, 0, 0, 0.12),
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.8);
+  --vd-shadow-pop: 0 0 0 0.5px rgba(0,0,0,0.1),
+                   0 10px 30px rgba(0,0,0,0.12),
+                   inset 0 0.5px 0 rgba(255,255,255,0.8);
 }
+
+/* the menu bar dial — shared across all directions */
+.vd-mark {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.vd-mark svg { display: block; }
+
+/* breathing animation for "learning" state */
+@keyframes vd-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.08); }
+}
+.vd-breathe { animation: vd-breathe 3.2s ease-in-out infinite; transform-origin: center; }
+
+/* slow blink for cursor glyphs, same cadence as brand */
+@keyframes vd-blink {
+  0%, 45%  { opacity: 1; }
+  55%, 95% { opacity: 0.2; }
+  100%     { opacity: 1; }
+}
+.vd-blink { animation: vd-blink 1.6s cubic-bezier(.4,0,.2,1) infinite; }
+
+/* attention satellite — rare, so make it confident but not anxious */
+@keyframes vd-sat-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+.vd-sat-pulse { animation: vd-sat-pulse 2s ease-in-out infinite; transform-origin: center; }
+
+/* small util classes */
+.vd-mono { font-family: var(--vd-font-mono); font-variant-numeric: tabular-nums; }
+.vd-editorial { font-family: var(--vd-font-editorial); font-style: normal; }
+.vd-em { font-weight: 500; color: var(--vd-amber); }
+
+.vd-label {
+  font-size: var(--vd-t-label);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--vd-fg-3);
+  font-weight: 500;
+}
+
+/* state dot */
+.vd-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  display: inline-block; flex-shrink: 0;
+}
+.vd-dot.on        { background: var(--vd-st-on);        box-shadow: 0 0 8px color-mix(in oklch, var(--vd-st-on) 60%, transparent); }
+.vd-dot.learning  { background: var(--vd-st-learning);  animation: vd-breathe 3.2s ease-in-out infinite; }
+.vd-dot.prepared  { background: var(--vd-st-prepared);  box-shadow: 0 0 8px color-mix(in oklch, var(--vd-st-prepared) 60%, transparent); }
+.vd-dot.active    { background: var(--vd-st-active);    box-shadow: 0 0 8px color-mix(in oklch, var(--vd-st-active) 60%, transparent); }
+.vd-dot.attention { background: var(--vd-st-attention); box-shadow: 0 0 8px color-mix(in oklch, var(--vd-st-attention) 60%, transparent); }
+.vd-dot.idle      { background: var(--vd-st-idle);      opacity: 0.6; }
+
+/* divider */
+.vd-divider { height: 1px; background: var(--vd-line); }
+.vd-hair    { height: 1px; background: var(--vd-hair); }

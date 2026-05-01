@@ -4,17 +4,93 @@
 //! method. Errors are converted to strings for the `invoke` boundary
 //! (Tauri serializes `Err` values as JSON).
 
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use vaner_contract::{EngineClient, EngineClientError, PredictedPrompt, stash_adopt};
 
 use crate::AppState;
+use crate::prepared_work_endpoint::validate_prepared_work_endpoint;
+
+/// `Quit` from the companion sidebar (and any other "exit Vaner"
+/// affordance the UI surfaces). The companion's `window.close()`
+/// only hides the companion webview — it does not exit the app —
+/// which made the existing button look broken.
+#[tauri::command]
+pub fn app_quit(app: AppHandle) -> tauri::Result<()> {
+    app.exit(0);
+    Ok(())
+}
+
+/// Hide just the current window (the companion). Wired separately
+/// from `app_quit` so the sidebar can offer both behaviours: a
+/// "Close" affordance that hides the window and a "Quit" that
+/// terminates the app.
+#[tauri::command]
+pub fn window_hide(app: AppHandle, label: String) -> tauri::Result<()> {
+    if let Some(win) = app.get_webview_window(&label) {
+        win.hide()?;
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn active_predictions(
     state: State<'_, AppState>,
 ) -> Result<Vec<PredictedPrompt>, String> {
     state.engine.active_predictions().await.map_err(human)
+}
+
+#[tauri::command]
+pub async fn prepared_work(limit: Option<u16>) -> Result<Vec<serde_json::Value>, String> {
+    let capped = limit.unwrap_or(3).clamp(1, 12);
+    let url = format!("http://127.0.0.1:8473/prepared-work?surface=desktop&limit={capped}");
+    let body: serde_json::Value = reqwest::get(url)
+        .await
+        .map_err(|_| "Vaner is unreachable. Is the daemon running?".to_string())?
+        .error_for_status()
+        .map_err(|e| format!("prepared-work request failed: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("prepared-work decode failed: {e}"))?;
+    Ok(body
+        .get("prepared_work")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default())
+}
+
+#[tauri::command]
+pub async fn prepared_work_action(
+    endpoint: String,
+    kind: String,
+    arguments: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    validate_prepared_work_endpoint(&endpoint).map_err(str::to_string)?;
+    let url = format!("http://127.0.0.1:8473{endpoint}");
+    let client = reqwest::Client::new();
+    let request = if kind == "inspect" {
+        client.get(url)
+    } else if kind == "feedback" {
+        let feedback_state = arguments
+            .as_ref()
+            .and_then(|value| value.get("feedback_state"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("useful");
+        client
+            .post(url)
+            .json(&serde_json::json!({ "feedback_state": feedback_state }))
+    } else {
+        client.post(url)
+    };
+    request
+        .send()
+        .await
+        .map_err(|_| "Vaner is unreachable. Is the daemon running?".to_string())?
+        .error_for_status()
+        .map_err(|e| format!("prepared work action failed: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("prepared work response decode failed: {e}"))
 }
 
 /// Adopt flow:

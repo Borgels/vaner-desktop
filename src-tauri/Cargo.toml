@@ -1,6 +1,6 @@
 [package]
 name = "vaner-desktop"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 rust-version = "1.85"
 description = "Cross-platform (Linux + Windows) desktop companion for the Vaner predictive-context engine."
@@ -25,6 +25,7 @@ tauri-plugin-updater = "2"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util", "fs"] }
 async-trait = "0.1"
 which = "7"
