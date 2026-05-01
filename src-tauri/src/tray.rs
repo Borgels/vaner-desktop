@@ -77,10 +77,10 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         })
         .on_tray_icon_event(|tray, event| {
             // The positioner plugin caches the tray icon's bounds so
-            // popover::anchor can land on TrayCenter. Forward every
-            // tray event regardless of variant — hover, primary click,
-            // secondary click — so the cache is populated by the time
-            // a menu item gets clicked.
+            // `Position::TrayCenter` knows where to anchor — without
+            // this hook the cache stays empty and any later
+            // `move_window(TrayCenter)` panics with "Tray position not
+            // set". Call it on every tray event regardless of variant.
             tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);
         })
         .build(app)?;
