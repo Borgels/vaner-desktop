@@ -18,6 +18,13 @@ use crate::vaner_cli::resolve_vaner_bin;
 #[derive(Debug, Clone, Serialize)]
 pub struct EngineStatusOut {
     pub reachable: bool,
+    /// `true` when the `vaner` CLI itself isn't installed (i.e. the
+    /// resolution lookup failed). Used by the reducer to distinguish
+    /// "engine unreachable" (daemon down, but CLI present) from "fresh
+    /// install, no engine on disk yet". Without this, a clean
+    /// `vaner-desktop` install on a machine that's never seen the CLI
+    /// shows a misleading "Engine error" panel.
+    pub cli_missing: bool,
     pub files_watched: u64,
     pub sources_count: u64,
     pub uptime_minutes: u64,
@@ -27,7 +34,22 @@ pub struct EngineStatusOut {
 
 #[tauri::command]
 pub async fn engine_status() -> Result<EngineStatusOut, String> {
-    let bin = resolve_vaner_bin()?;
+    let bin = match resolve_vaner_bin() {
+        Ok(path) => path,
+        Err(message) => {
+            // CLI not on PATH and no $VANER_BIN override. The reducer
+            // should land on `.notInstalled` rather than `.error`.
+            return Ok(EngineStatusOut {
+                reachable: false,
+                cli_missing: true,
+                files_watched: 0,
+                sources_count: 0,
+                uptime_minutes: 0,
+                indexing_kind: "idle".to_string(),
+                detail: Some(message),
+            });
+        }
+    };
     let output = Command::new(&bin)
         .arg("status")
         .arg("--json")
@@ -38,10 +60,12 @@ pub async fn engine_status() -> Result<EngineStatusOut, String> {
         .map_err(|e| format!("failed to spawn `vaner status`: {e}"))?;
 
     if !output.status.success() {
-        // Treat exit-non-zero as "engine unavailable" rather than failing
-        // the whole call. The reducer will surface .error.
+        // CLI exists but `vaner status` returned non-zero — daemon is
+        // down or in a degraded state. The reducer surfaces .error
+        // (actionable: restart engine).
         return Ok(EngineStatusOut {
             reachable: false,
+            cli_missing: false,
             files_watched: 0,
             sources_count: 0,
             uptime_minutes: 0,
@@ -77,6 +101,7 @@ pub async fn engine_status() -> Result<EngineStatusOut, String> {
 
     Ok(EngineStatusOut {
         reachable,
+        cli_missing: false,
         files_watched: scenarios_ready, // approximation; honest signal of "engine has read N things"
         sources_count: 0,               // populated by the Svelte side from setup_status
         uptime_minutes: 0,              // not exposed by vaner status today; v0.3 follow-up

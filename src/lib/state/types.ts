@@ -52,6 +52,11 @@ export type IndexingState =
 
 export interface EngineStatus {
   reachable: boolean;
+  /** True when the `vaner` CLI itself isn't installed on this machine.
+   *  The reducer prefers `.notInstalled` over `.error` in that case so
+   *  the UI gives the user an install link instead of a misleading
+   *  "Engine error" panel. */
+  cliMissing: boolean;
   filesWatched: number;
   sourcesCount: number;
   uptimeMinutes: number;

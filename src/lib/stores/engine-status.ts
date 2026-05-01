@@ -9,6 +9,7 @@ import type { EngineStatus } from "$lib/state/types.js";
 
 const stub: EngineStatus = {
   reachable: true,
+  cliMissing: false,
   filesWatched: 0,
   sourcesCount: 0,
   uptimeMinutes: 0,
@@ -19,6 +20,7 @@ const stub: EngineStatus = {
 
 interface EngineStatusOut {
   reachable: boolean;
+  cli_missing: boolean;
   files_watched: number;
   sources_count: number;
   uptime_minutes: number;
@@ -45,6 +47,7 @@ export function startEngineStatusPolling(intervalMs = 5000): void {
       engineStatus.update((prev) => ({
         ...prev,
         reachable: out.reachable,
+        cliMissing: out.cli_missing,
         filesWatched: out.files_watched,
         // Keep prev.sourcesCount until the setup-status overlay fires
         // (we don't want to flap the reducer between
@@ -55,8 +58,9 @@ export function startEngineStatusPolling(intervalMs = 5000): void {
           : { kind: "idle" },
       }));
     } catch {
-      // Daemon down or CLI missing — flag unreachable so the popover
-      // surfaces .error instead of pretending things work.
+      // Defensive: invoke itself failed (Tauri runtime issue, not a
+      // CLI-missing case — the Rust side returns Ok with cli_missing
+      // for that). Flag unreachable but don't claim cliMissing.
       engineStatus.update((prev) => ({ ...prev, reachable: false }));
     }
   };

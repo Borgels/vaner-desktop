@@ -42,8 +42,17 @@ export interface ReducerInputs {
 }
 
 export function reduce(i: ReducerInputs): VanerState {
-  // 1. Engine unreachable → .error (overrides pause; the user needs
-  //    to know the engine is down even if they asked for quiet)
+  // 1a. Vaner CLI itself isn't installed → .notInstalled. This MUST
+  //     come before the unreachable branch: a fresh `vaner-desktop`
+  //     install on a machine that's never seen the CLI would
+  //     otherwise show "Engine error / restart engine", which is
+  //     misleading. .notInstalled gives a real install link.
+  if (i.status.cliMissing) {
+    return { kind: "notInstalled" };
+  }
+
+  // 1b. Engine unreachable → .error (overrides pause; the user needs
+  //     to know the engine is down even if they asked for quiet)
   if (!i.status.reachable) {
     return {
       kind: "error",
