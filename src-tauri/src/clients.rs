@@ -71,6 +71,53 @@ pub struct DoctorReport {
 }
 
 // ---------------------------------------------------------------------------
+// Verify — multi-layer leverage stack
+// ---------------------------------------------------------------------------
+//
+// Mirrors the JSON shape of `vaner clients verify --format json` (added
+// in this conversation's vaner PR). Four layers per client:
+//   1. mcp     — universal floor; technical wiring
+//   2. primer  — system-instruction-like rules file
+//   3. skill   — agent-callable subroutine (Vaner ships vaner-feedback)
+//   4. plugin  — atomic install bundle with hooks (Vaner ships for
+//                Claude Code today)
+//
+// See docs.vaner.ai/integrations/client-capabilities for the full
+// per-client capability matrix.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LayerStatus {
+    pub applicable: bool,
+    pub wired: bool,
+    pub path: Option<String>,
+    #[serde(default)]
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientLayers {
+    pub mcp: LayerStatus,
+    pub primer: LayerStatus,
+    pub skill: LayerStatus,
+    pub plugin: LayerStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientVerification {
+    pub client_id: String,
+    pub label: String,
+    pub detected: bool,
+    /// One of: "ready" | "wired-mcp-only" | "partial" | "missing" | "not-detected"
+    pub overall: String,
+    pub layers: ClientLayers,
+}
+
+#[derive(Debug, Deserialize)]
+struct VerifyResponse {
+    results: Vec<ClientVerification>,
+}
+
+// ---------------------------------------------------------------------------
 // Subprocess helpers
 // ---------------------------------------------------------------------------
 
@@ -177,4 +224,17 @@ pub async fn clients_doctor(repo_root: String) -> Result<DoctorReport, String> {
     let report: DoctorReport = serde_json::from_str(&stdout)
         .map_err(|e| format!("could not parse clients doctor output: {e}"))?;
     Ok(report)
+}
+
+/// `vaner clients verify --format json` — per-layer status (MCP /
+/// primer / skill / plugin) for every supported client. Drives the
+/// final-slide verification panel in the desktop wizard so the user
+/// sees which clients are wired and at what depth, not just whether
+/// MCP is wired.
+#[tauri::command]
+pub async fn clients_verify(repo_root: String) -> Result<Vec<ClientVerification>, String> {
+    let stdout = run_vaner_clients_json(Path::new(&repo_root), &["verify"], true).await?;
+    let resp: VerifyResponse = serde_json::from_str(&stdout)
+        .map_err(|e| format!("could not parse clients verify output: {e}"))?;
+    Ok(resp.results)
 }
