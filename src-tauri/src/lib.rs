@@ -28,6 +28,7 @@ pub mod commands;
 pub mod companion;
 pub mod diagnostics;
 pub mod engine;
+pub mod ollama;
 pub mod onboarding;
 pub mod popover;
 pub mod prepared_work_endpoint;
@@ -142,6 +143,10 @@ pub fn run() {
             onboarding::close_onboarding,
             engine::engine_status,
             agent_detector::detect_agents,
+            ollama::ollama_list,
+            ollama::ollama_pull,
+            ollama::ollama_cancel_pull,
+            ollama::ollama_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

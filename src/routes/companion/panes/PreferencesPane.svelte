@@ -21,6 +21,7 @@
   import { setup, loadStatus, loadHardware, loadPolicy } from "$lib/stores/setup.js";
   import { silentHours } from "$lib/stores/silent-hours.js";
   import { showToast } from "$lib/stores/toast.js";
+  import ModelsCard from "$lib/components/ModelsCard.svelte";
 
   // Silent-hours window — From / To, weekdays-only. Persisted to
   // localStorage for v0.2.2 alongside the simple `silentHours` toggle
@@ -120,6 +121,9 @@
     <p class="muted">Loading bundle…</p>
   {/if}
 </div>
+
+<!-- Models (Ollama) -->
+<ModelsCard />
 
 <!-- Silent hours -->
 <div class="card">
