@@ -210,7 +210,7 @@ pub async fn engine_service_status() -> Result<ServiceStatus, String> {
     })
 }
 
-fn render_unit(vaner_bin: &str, workspace: &str) -> String {
+fn render_unit(vaner_bin: &Path, workspace: &str) -> String {
     // KillSignal=SIGINT lets the existing `try: ... except
     // KeyboardInterrupt: down()` block in vaner up handle a graceful
     // shutdown (calls run_down to clean up PID files). systemd's
@@ -237,7 +237,7 @@ RestartSec=5\n\
 \n\
 [Install]\n\
 WantedBy=default.target\n",
-        bin = vaner_bin,
+        bin = vaner_bin.display(),
         workspace = workspace,
     )
 }

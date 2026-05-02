@@ -36,7 +36,10 @@
   import V1PrimaryButton from "$lib/components/primitives/V1PrimaryButton.svelte";
   import V1GhostButton from "$lib/components/primitives/V1GhostButton.svelte";
   import Spinner from "$lib/components/primitives/Spinner.svelte";
-  import RecommendedPresetCard from "$lib/components/RecommendedPresetCard.svelte";
+  // RecommendedPresetCard import removed — slide 4 renders the
+  // bundle inline from the SelectionResult instead of nesting a
+  // model-size card. The component file is still on disk; can be
+  // restored if we want a richer model picker later.
   import WizardVerificationPanel from "$lib/components/WizardVerificationPanel.svelte";
   import type {
     BackgroundPosture,
@@ -161,6 +164,14 @@
       ]);
       recommendation = sel;
       modelRecommendation = modelRec;
+      if (sel == null) {
+        // recommend() swallows errors and returns null; the wizard
+        // would otherwise sit silently on the click. Surface the
+        // last error from the setup store so the user knows what's
+        // wrong (typically: "vaner setup exited with code N: …").
+        const detail = $setup.lastError ?? "Could not generate a recommendation.";
+        showToast(detail, "attention", 6000);
+      }
       return sel != null;
     } finally {
       recommending = false;
@@ -169,22 +180,17 @@
   }
 
   async function nextSlide() {
-    // Slide 1 (Work styles): go straight to the recommendation review.
+    // Slide 1 (Work styles): load the recommendation and immediately
+    // apply. The old "review" slide 4 is gone — there's nothing for
+    // the user to review or override (bundle picking is a function of
+    // hardware + answers; "recommended" with no choice is a misleading
+    // frame). Go straight from "tell me how you work" to "applying."
     if (slide === 1) {
       const ok = await loadRecommendations();
-      if (ok) slide = 4;
-      return;
-    }
-    // Legacy slide 3: same transition into the recommendation review.
-    if (slide === 3) {
-      const ok = await loadRecommendations();
-      if (ok) slide = 4;
-      return;
-    }
-    // Slide 4 (Recommendation review): Apply.
-    if (slide === 4) {
-      slide = 5;
-      void doApply();
+      if (ok) {
+        slide = 5;
+        void doApply();
+      }
       return;
     }
     slide = Math.min(slide + 1, TOTAL_SLIDES - 1);
@@ -192,11 +198,6 @@
 
   function prevSlide() {
     if (slide === 0) return;
-    // From review (4) → Back lands on Work styles (1).
-    if (slide === 4) {
-      slide = 1;
-      return;
-    }
     slide -= 1;
   }
 
@@ -363,16 +364,10 @@
     slide === 0
       ? "Get started"
       : slide === 1
-        ? recommending
-          ? "Checking this computer…"
-          : "Show recommendation"
-        : slide === 3
-          ? recommending
-            ? "Checking this computer…"
-            : "See recommendation"
-          : slide === 4
-            ? "Set up Vaner"
-            : "Continue",
+        ? recommending || applying
+          ? "Setting up…"
+          : "Set up Vaner"
+        : "Continue",
   );
   const nextDisabled = $derived(
     (slide === 1 && workStyles.length === 0) || recommending || applying,
@@ -403,14 +398,12 @@
     { value: "use_machine", label: "Use this machine", hint: "Cranked — happy to ponder overnight." },
   ];
 
-  const dotCount = 4;
+  const dotCount = 3;
   // Visible-position-of-current-slide for the dots header.
+  // Flow is now just 0 → 1 → 5 (welcome → work styles → applying/done).
   const dotIndex = $derived.by(() => {
-    // Default flow only renders slides 0, 1, 4, 5 — collapse the gap.
     if (slide <= 1) return slide;
-    if (slide === 4) return 2;
-    if (slide >= 5) return 3;
-    return slide;
+    return 2;
   });
 </script>
 
@@ -503,27 +496,6 @@
           {/each}
         </div>
       </section>
-    {:else if slide === 4}
-      <!-- 4 · Recommendation review + Apply.
-           v0.2.3 simplification: the RecommendedPresetCard is the *only*
-           card on this slide. The earlier "card-within-a-card" framing
-           (kicker + bundle headline + bundle desc + tier badge wrapped
-           around another card) was visually noisy and the bundle name
-           is shown inside the card's caption already. -->
-      <section class="slide review">
-        <V1Kicker text="Recommended setup" color="var(--vd-amber)" />
-        <h1>Vaner has chosen a setup for this computer.</h1>
-        {#if recommendation}
-          <RecommendedPresetCard
-            payload={modelRecommendation}
-            loading={modelRecommending}
-            {hardware}
-            bind:selectedModelId
-          />
-        {:else}
-          <div class="loading"><Spinner size={20} /><span>Checking this computer…</span></div>
-        {/if}
-      </section>
     {:else}
       <!-- 5 · Apply / Done. Widening branch is mostly dead code now
            that the onboarding wizard always submits local_only — but
@@ -540,7 +512,7 @@
           </p>
           <div class="actions inline">
             <V1PrimaryButton title="Allow widening" tint="var(--vd-amber)" onclick={() => doApply(true)} />
-            <V1GhostButton title="Keep local-only" onclick={() => { widening = null; slide = 4; }} />
+            <V1GhostButton title="Keep local-only" onclick={() => { widening = null; slide = 1; }} />
           </div>
         {:else if applying || applyError}
           {@const isError = Boolean(applyError)}
@@ -584,7 +556,7 @@
               />
               <V1GhostButton
                 title="Back"
-                onclick={() => { applyError = null; applyErrorStep = null; slide = 4; }}
+                onclick={() => { applyError = null; applyErrorStep = null; slide = 1; }}
               />
             </div>
           {/if}
@@ -604,7 +576,28 @@
           />
 
           <div class="actions inline">
-            <V1PrimaryButton title="Open Vaner" tint="var(--vd-amber)" onclick={() => onComplete()} />
+            <V1PrimaryButton
+              title="Open Vaner"
+              tint="var(--vd-amber)"
+              onclick={async () => {
+                // Open the companion immediately, then close the
+                // onboarding window. Pre-fix the button only fired
+                // `onComplete()` (which closes onboarding) and left
+                // the user staring at an empty desktop wondering
+                // where Vaner went. The companion is the natural
+                // landing surface — Prepared + Agents + Engine
+                // panes are exactly what someone who just finished
+                // setup wants to see.
+                try {
+                  await invoke("open_companion", { tab: "prepared" });
+                } catch {
+                  // Best-effort: fall through to the close handler
+                  // even if the companion couldn't open, so the user
+                  // isn't trapped in onboarding.
+                }
+                onComplete();
+              }}
+            />
           </div>
         {:else}
           <div class="loading"><Spinner size={20} /><span>Preparing setup…</span></div>
@@ -625,7 +618,7 @@
     {#if slide < TOTAL_SLIDES - 1}
       <V1PrimaryButton
         title={nextLabel}
-        tint={slide === 4 ? "var(--vd-amber)" : undefined}
+        tint={slide === 1 ? "var(--vd-amber)" : undefined}
         disabled={nextDisabled}
         onclick={nextSlide}
       />
@@ -729,6 +722,13 @@
   }
   .slide .lead strong { font-weight: 500; color: var(--vd-fg-1); }
   .slide .lead em { font-style: italic; color: var(--vd-amber); }
+  .slide .hardware-line {
+    margin: 6px 0 0;
+    font-family: var(--vd-font-mono, monospace);
+    font-size: 11.5px;
+    color: var(--vd-fg-3);
+    line-height: 1.4;
+  }
 
   .chips {
     display: flex;

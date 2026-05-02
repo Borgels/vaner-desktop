@@ -50,16 +50,24 @@ export async function applyComputePreset(preset: ComputePreset): Promise<Compute
   return cfg;
 }
 
-/** Heuristic: classify a live config as one of the named presets.
- *  Used to highlight the active preset in the Preferences card.
- *  Falls back to `null` when the config doesn't match any preset
- *  exactly — happens when the user has nudged a slider after a
- *  preset apply, which is fine ("custom" lights nothing). */
+/** Classify a live config as one of the three named presets.
+ *
+ *  The exact-match version flagged "Custom" for any config that
+ *  didn't hit each knob bang on, which made a fresh `vaner setup
+ *  apply` look unconfigured (the CLI's catalogue uses subtly
+ *  different defaults from the desktop's preset writer). Users want
+ *  to see "Balanced is selected" the instant the wizard finishes —
+ *  classify by behaviour, not by exact knob values:
+ *
+ *    - `idle_only` off → Performance (continuous loop)
+ *    - `idle_only` on,  `max_cycle ≤ 200`  → Light (short bursts)
+ *    - `idle_only` on,  otherwise          → Balanced (default)
+ *
+ *  Any sensible config lands on one of the three; `null` only when
+ *  we have no config to read at all. */
 export function classifyPreset(cfg: ComputeConfig | null): ComputePreset | null {
   if (!cfg) return null;
-  const eq = (a: number, b: number) => Math.abs(a - b) < 1e-3;
-  if (eq(cfg.cpu_fraction, 0.15) && cfg.idle_only && eq(cfg.max_cycle_seconds, 180)) return "light";
-  if (eq(cfg.cpu_fraction, 0.25) && cfg.idle_only && eq(cfg.max_cycle_seconds, 300)) return "balanced";
-  if (eq(cfg.cpu_fraction, 0.5) && !cfg.idle_only && eq(cfg.max_cycle_seconds, 600)) return "performance";
-  return null;
+  if (!cfg.idle_only) return "performance";
+  if (cfg.max_cycle_seconds <= 200) return "light";
+  return "balanced";
 }

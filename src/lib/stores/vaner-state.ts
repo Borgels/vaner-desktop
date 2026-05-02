@@ -10,16 +10,26 @@ import type { VanerState } from "$lib/state/types.js";
 import { agentDetector } from "./agent-detector.js";
 import { isPaused } from "./app-state.js";
 import { blockedSources } from "./blocked-sources.js";
+import { clientDetectStatus } from "./clients.js";
 import { engineStatus } from "./engine-status.js";
 import { predictions } from "./predictions.js";
 import { prepared } from "./prepared.js";
 import { preparedWork } from "./prepared-work.js";
 import { silentHours } from "./silent-hours.js";
-import { workspacePath } from "./workspace.js";
 
 export const vanerState: Readable<VanerState> = derived(
-  [predictions, preparedWork, engineStatus, prepared, blockedSources, agentDetector, silentHours, isPaused, workspacePath],
-  ([$preds, $work, $status, $prep, $blocked, $agents, $silent, $paused, $workspace]) => {
+  [
+    predictions,
+    preparedWork,
+    engineStatus,
+    prepared,
+    blockedSources,
+    agentDetector,
+    silentHours,
+    isPaused,
+    clientDetectStatus,
+  ],
+  ([$preds, $work, $status, $prep, $blocked, $agents, $silent, $paused, $clientDetect]) => {
     const hasAnySource = $status.sourcesCount > 0;
     const inputs: ReducerInputs = {
       status: $status,
@@ -28,7 +38,7 @@ export const vanerState: Readable<VanerState> = derived(
       anyAgentRunning: $agents.runningCount > 0,
       silentHours: $silent,
       hasAnySource,
-      workspaceMissing: !$workspace,
+      clientDetect: $clientDetect,
       activePredictions: $preds,
       preparedWork: $work,
       noAgentSuggestions: $agents.suggestions,

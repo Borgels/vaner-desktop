@@ -6,8 +6,8 @@
   import { bootstrapAppStateListeners } from "$lib/stores/app-state.js";
   import { bootstrapUpdaterListeners } from "$lib/stores/updater.js";
   import { loadStatus } from "$lib/stores/setup.js";
-  import { loadWorkspace, workspacePath } from "$lib/stores/workspace.js";
-  import { get } from "svelte/store";
+  import { rescan as rescanClients } from "$lib/stores/clients.js";
+  import { bootstrapDaemonAudit, disposeDaemonAudit } from "$lib/stores/daemon-audit.js";
   import {
     boostEngineStatusPolling,
     setSourcesCount,
@@ -42,6 +42,7 @@
 
     bootstrapAppStateListeners();
     bootstrapUpdaterListeners();
+    void bootstrapDaemonAudit();
 
     // Listen for the startup auto-bring-up result. The Rust side
     // shells `vaner up --detach` itself when the cockpit is down; we
@@ -64,24 +65,30 @@
       // surfaces the right state on its own.
     });
 
-    // Hydrate the workspace store before anything that shells the CLI.
-    // The reducer reads this synchronously to decide between
-    // .needsWorkspace and the rest of the chain; the engine-status
-    // poll downstream feeds `--path` from the same source.
-    await loadWorkspace();
-
     // Reducer-input polling. Both are idempotent; the popover survives
     // these returning errors (the stores keep their last value).
     startEngineStatusPolling();
     startAgentDetectorPolling();
 
+    // Probe MCP-client integrations. The reducer routes the popover
+    // to .notWiredToAnyClient when zero clients have Vaner registered,
+    // so this needs to run on bootstrap (without it, `total = 0` and
+    // the reducer falls through to engine state — wrong UX for fresh
+    // installs).
+    void rescanClients();
+    // Re-probe whenever the popover regains focus. Common flow: user
+    // clicks "Connect a client", lands on the Agents pane, installs
+    // Vaner into Cursor, returns to the popover — without this, the
+    // wired-count stays at 0 and the .notWiredToAnyClient panel
+    // sticks around even though the install succeeded.
+    const win = getCurrentWebviewWindow();
+    void win.onFocusChanged(({ payload: focused }) => {
+      if (focused) void rescanClients();
+    });
+
     // First-run check: if no setup has completed, open the dedicated
-    // onboarding window. Gated on a workspace being picked — without
-    // one, `vaner setup show --path .` runs against the desktop's cwd
-    // (often /) and reports an empty [setup], firing onboarding on
-    // every launch. The .needsWorkspace popover state takes the user
-    // through the picker first.
-    if (!get(workspacePath)) return;
+    // onboarding window. (Re-run setup is also reachable from
+    // Preferences, so this is a nudge, not a gate.)
     try {
       const status = await loadStatus();
       const completedAt = status?.setup?.completed_at;
@@ -105,6 +112,7 @@
     stopEngineStatusPolling();
     stopAgentDetectorPolling();
     bringUpUnlisten?.();
+    void disposeDaemonAudit();
   });
 </script>
 

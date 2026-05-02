@@ -3,6 +3,7 @@
   ErrorView.swift + handoff V1Error.
 -->
 <script lang="ts">
+  import { onMount } from "svelte";
   import QuietShell from "$lib/components/primitives/QuietShell.svelte";
   import V1Headline from "$lib/components/primitives/V1Headline.svelte";
   import V1Body from "$lib/components/primitives/V1Body.svelte";
@@ -13,9 +14,23 @@
   import { invoke } from "@tauri-apps/api/core";
   import { showToast } from "$lib/stores/toast.js";
   import { boostEngineStatusPolling } from "$lib/stores/engine-status.js";
+  import { loadWorkspace, workspacePath } from "$lib/stores/workspace.js";
 
   type Props = { engine: EngineError };
   const { engine }: Props = $props();
+
+  // The reducer hits this branch any time the cockpit is silent. Two
+  // very different stories live here:
+  //
+  //   - The user has a workspace selected and the engine should be
+  //     running for it — that *is* an error, scary copy is right.
+  //   - The user hasn't picked a workspace yet (the desktop is fresh,
+  //     or they cleared it) — engine being down is the expected idle
+  //     state, not a failure. Calling that "ENGINE UNAVAILABLE"
+  //     misleads them into thinking something broke. We soften the
+  //     copy and steer them at setup instead of "Restart engine".
+  onMount(() => void loadWorkspace());
+  const unconfigured = $derived($workspacePath == null);
 
   type BringUpOutcome = "already_running" | "started" | "failed" | "no_workspace";
   type BringUpResult = {
@@ -74,37 +89,66 @@
       );
     }
   }
+
+  async function openSetup() {
+    try {
+      await invoke("open_onboarding");
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : `Could not open setup: ${err}`,
+        "attention",
+        4000,
+      );
+    }
+  }
 </script>
 
-<QuietShell markState="attention" stateLabel="Engine unavailable" stateLabelTint="var(--vd-st-attention)">
-  <V1Headline text={engine.message} />
-
-  <div class="info">
-    <V1Body muted>What's still working:</V1Body>
-    <ul>
-      <li>Recently prepared moments stay in the popover</li>
-      <li>Sending context to your agent still works</li>
-      <li>Preferences are intact</li>
-    </ul>
-  </div>
-
-  {#if engine.incidentID || engine.port}
-    <pre class="meta">{engine.incidentID ? `incident ${engine.incidentID}` : ""}{engine.port ? `  port ${engine.port}` : ""}</pre>
-  {/if}
-
-  <div class="actions">
-    <V1PrimaryButton
-      title={restarting ? "Restarting…" : "Restart engine"}
-      tint="var(--vd-st-attention)"
-      onclick={restartEngine}
+{#if unconfigured}
+  <QuietShell markState="idle" stateLabel="Setup not finished">
+    <V1Headline text="Vaner isn't running yet." />
+    <V1Body
+      muted
+      text="No workspace is set, so the engine isn't watching anything. Finish setup or open a wired agent in a repo and Vaner will start."
     />
-    <V1GhostButton title="Diagnostics" onclick={openDiagnostics} />
-  </div>
+    <div class="actions">
+      <V1PrimaryButton title="Run setup" onclick={openSetup} />
+      <V1GhostButton title="Diagnostics" onclick={openDiagnostics} />
+    </div>
+    {#snippet footer()}
+      <PopoverFooter health="idle" healthLabel="Idle — no workspace yet" />
+    {/snippet}
+  </QuietShell>
+{:else}
+  <QuietShell markState="attention" stateLabel="Engine unavailable" stateLabelTint="var(--vd-st-attention)">
+    <V1Headline text={engine.message} />
 
-  {#snippet footer()}
-    <PopoverFooter health="attention" />
-  {/snippet}
-</QuietShell>
+    <div class="info">
+      <V1Body muted>What's still working:</V1Body>
+      <ul>
+        <li>Recently prepared moments stay in the popover</li>
+        <li>Sending context to your agent still works</li>
+        <li>Preferences are intact</li>
+      </ul>
+    </div>
+
+    {#if engine.incidentID || engine.port}
+      <pre class="meta">{engine.incidentID ? `incident ${engine.incidentID}` : ""}{engine.port ? `  port ${engine.port}` : ""}</pre>
+    {/if}
+
+    <div class="actions">
+      <V1PrimaryButton
+        title={restarting ? "Restarting…" : "Restart engine"}
+        tint="var(--vd-st-attention)"
+        onclick={restartEngine}
+      />
+      <V1GhostButton title="Diagnostics" onclick={openDiagnostics} />
+    </div>
+
+    {#snippet footer()}
+      <PopoverFooter health="attention" />
+    {/snippet}
+  </QuietShell>
+{/if}
 
 <style>
   .gap-6 { height: 6px; }

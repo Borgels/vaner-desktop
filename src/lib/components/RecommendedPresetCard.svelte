@@ -162,34 +162,41 @@
   {#if loading}
     <div class="loading"><Spinner size={16} /><span>Checking this computer…</span></div>
   {:else}
-    <div class="row">
-      <span class="label">Computer</span>
-      <strong>{acceleratorLabel()}</strong>
-    </div>
-
-    {#if allCandidates.length > 0}
-      <div class="row">
-        <span class="label">Model size</span>
-        <div class="seg" role="radiogroup" aria-label="Local model size">
-          {#each (Object.keys(SIZE_HINTS) as SizeKey[]) as bucket (bucket)}
-            {@const enabled = Boolean(byBucket[bucket])}
-            <button
-              type="button"
-              role="radio"
-              class="seg-btn"
-              class:on={enabled && effectiveBucket === bucket}
-              aria-checked={enabled && effectiveBucket === bucket}
-              disabled={!enabled}
-              onclick={() => (activeBucket = bucket)}
-            >
-              <span>{SIZE_HINTS[bucket].label}</span>
-              <span class="hint">{SIZE_HINTS[bucket].hint}</span>
-            </button>
-          {/each}
-        </div>
-        <span class="caption">{modelCaption(activeModel)}</span>
+    <span class="kicker">RECOMMENDED FOR YOU</span>
+    {#if activeModel}
+      {@const id = modelKey(activeModel)}
+      {@const display = activeModel.display_name ?? activeModel.family ?? id}
+      <div class="picked">
+        <strong class="picked-name">{display}</strong>
+        {#if id && id !== display}
+          <code class="picked-id">{id}</code>
+        {/if}
       </div>
-    {:else}
+    {/if}
+
+    <p class="hardware">{acceleratorLabel()}</p>
+
+    {#if allCandidates.length > 1}
+      <div class="seg" role="radiogroup" aria-label="Local model size">
+        {#each (Object.keys(SIZE_HINTS) as SizeKey[]) as bucket (bucket)}
+          {@const enabled = Boolean(byBucket[bucket])}
+          <button
+            type="button"
+            role="radio"
+            class="seg-btn"
+            class:on={enabled && effectiveBucket === bucket}
+            aria-checked={enabled && effectiveBucket === bucket}
+            disabled={!enabled}
+            onclick={() => (activeBucket = bucket)}
+          >
+            <span>{SIZE_HINTS[bucket].label}</span>
+            <span class="hint">{SIZE_HINTS[bucket].hint}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
+
+    {#if !activeModel && allCandidates.length === 0}
       <V1Body
         muted
         text="Vaner will choose the safest local setup it can verify on this computer."
@@ -202,8 +209,8 @@
   .card {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding: 16px 18px;
+    gap: 10px;
+    padding: 18px 20px;
     background: var(--vd-bg-1);
     border: 0.5px solid var(--vd-line);
     border-radius: var(--vd-r-card);
@@ -216,22 +223,36 @@
     color: var(--vd-fg-2);
     font-size: 13px;
   }
-  .row {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .label {
-    font-size: 11px;
-    color: var(--vd-fg-3);
+  .kicker {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    color: var(--vd-amber);
   }
-  strong {
-    font-size: 14px;
-    line-height: 1.35;
+  .picked {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .picked-name {
+    font-size: 20px;
     font-weight: 500;
+    line-height: 1.2;
     color: var(--vd-fg-1);
+    letter-spacing: -0.01em;
+  }
+  .picked-id {
+    font-family: var(--vd-font-mono, monospace);
+    font-size: 12px;
+    color: var(--vd-fg-3);
+  }
+  .hardware {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--vd-fg-3);
+    line-height: 1.4;
   }
   .seg {
     display: inline-flex;
@@ -239,7 +260,7 @@
     border-radius: var(--vd-r-chip, 8px);
     overflow: hidden;
     align-self: flex-start;
-    margin-top: 2px;
+    margin-top: 6px;
   }
   .seg-btn {
     display: inline-flex;
@@ -265,11 +286,5 @@
   .seg-btn .hint {
     font-size: 10px;
     color: var(--vd-fg-3);
-  }
-  .caption {
-    font-size: 11px;
-    color: var(--vd-fg-3);
-    font-family: var(--vd-font-mono, monospace);
-    margin-top: 6px;
   }
 </style>

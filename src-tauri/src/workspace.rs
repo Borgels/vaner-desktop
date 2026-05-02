@@ -38,6 +38,20 @@ pub struct DesktopState {
     /// the picker rather than firing onboarding.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<PathBuf>,
+    /// Last-known position + size of the companion window. Restored
+    /// on every open so the user lands the window where they left
+    /// it. Cleared when the user closes the window off-screen on a
+    /// monitor that no longer exists (validated at open time).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub companion_geometry: Option<WindowGeometry>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct WindowGeometry {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
 }
 
 /// `$XDG_CONFIG_HOME/vaner-desktop` if set, otherwise
@@ -99,14 +113,26 @@ pub fn resolve() -> Option<PathBuf> {
     read_state().workspace
 }
 
-/// String-form helper for shelling the CLI. Falls back to `"."` only
-/// when nothing is resolvable, matching the old behaviour so existing
-/// `--path .` invocations don't crash; callers should prefer
-/// [`resolve`] when they want to gate behaviour on "no workspace yet".
+/// String-form helper for shelling the CLI. Falls back to `$HOME`
+/// when no workspace is set — the desktop process inherits its cwd
+/// from whatever launched it (a `.desktop` file runs from `/`, the
+/// AppImage runner from wherever), so `--path .` against `/` blows up
+/// trying to `mkdir /.vaner`. `$HOME` is the documented default Vaner
+/// workspace; `vaner setup apply --path $HOME` lands the bundle at
+/// `~/.vaner/config.toml` which the daemon picks up when no other
+/// workspace is wired in. Callers that want to gate on "no workspace
+/// yet" should prefer [`resolve`].
 pub fn resolve_str() -> String {
-    resolve()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|| ".".to_string())
+    if let Some(p) = resolve() {
+        return p.to_string_lossy().into_owned();
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let s = home.to_string_lossy().into_owned();
+        if !s.is_empty() {
+            return s;
+        }
+    }
+    ".".to_string()
 }
 
 fn validate_workspace(path: &Path) -> Result<PathBuf, String> {
@@ -187,5 +213,93 @@ pub fn export_to_env(_app: &AppHandle) {
                 std::env::set_var("VANER_PATH", p);
             }
         }
+    }
+}
+
+/// If no workspace is persisted yet but a cockpit is already running
+/// (typically because the user started one from the CLI, or an
+/// AI-client integration like Cursor / Claude Code spun one up),
+/// adopt that cockpit's `repo_root` as our workspace silently.
+///
+/// This stops the popover from forcing the picker on people who've
+/// already wired Vaner into their workflow elsewhere — the desktop
+/// is supposed to be a viewer for the running engine, not a
+/// gatekeeper for it.
+///
+/// Called once during app startup, before [`spawn_at_startup`] in
+/// `bring_up`. Best-effort: any failure (cockpit unreachable, JSON
+/// missing `repo_root`, persist error) leaves the state.json
+/// untouched and falls through to the picker. We deliberately do
+/// NOT honour `VANER_PATH` here — that's an explicit user override
+/// and shouldn't be overwritten by a probe.
+pub async fn adopt_running_cockpit() {
+    if read_state().workspace.is_some() {
+        return;
+    }
+    if std::env::var_os("VANER_PATH").is_some() {
+        // Don't persist an env-driven path — when the env var goes
+        // away on next launch we want the resolution chain to
+        // re-probe rather than be stuck on a stale choice.
+        return;
+    }
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(500))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    // The cockpit serves a few endpoints; `/openapi.json` is light
+    // and always present on a healthy daemon. We only need it to
+    // confirm reachability — the workspace path comes from the
+    // CLI's `vaner status --json` (which auto-discovers the running
+    // workspace from the daemon's PID file when no --path is given).
+    let probe = format!("http://127.0.0.1:8473/openapi.json");
+    if client.get(&probe).send().await.ok().filter(|r| r.status().is_success()).is_none() {
+        return;
+    }
+    let bin = match crate::vaner_cli::resolve_vaner_bin() {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    let output = match tokio::process::Command::new(&bin)
+        .arg("status")
+        .arg("--json")
+        .output()
+        .await
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return,
+    };
+    let parsed: serde_json::Value = match serde_json::from_slice(&output.stdout) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let Some(repo_root) = parsed.get("repo_root").and_then(|v| v.as_str()) else {
+        return;
+    };
+    let path = PathBuf::from(repo_root);
+    if !path.is_dir() {
+        return;
+    }
+    let mut state = read_state();
+    state.workspace = Some(path);
+    let _ = write_state(&state);
+}
+
+/// Read the persisted companion-window geometry, if any.
+pub fn companion_geometry() -> Option<WindowGeometry> {
+    read_state().companion_geometry
+}
+
+/// Persist the companion window's current position + size. Called
+/// from the window's close-requested / move / resize handlers in
+/// companion.rs. Best-effort: a write failure is logged-and-ignored
+/// so a momentary disk hiccup doesn't tear the running window down.
+pub fn save_companion_geometry(geom: WindowGeometry) {
+    let mut state = read_state();
+    state.companion_geometry = Some(geom);
+    if let Err(e) = write_state(&state) {
+        eprintln!("[vaner-desktop] could not persist companion geometry: {e}");
     }
 }

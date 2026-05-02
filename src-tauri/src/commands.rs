@@ -143,3 +143,24 @@ fn human(err: EngineClientError) -> String {
         other => format!("{other}"),
     }
 }
+
+
+/// Open an arbitrary URL in the user’s default browser via `xdg-open`.
+/// Used by popover states and Preferences cards that link to external
+/// docs (`docs.vaner.ai/integrations/connect-your-client`, the
+/// release page when the apt mirror is unreachable, etc.). The
+/// updater banner has its own narrower wrapper around this; this is
+/// the general one for non-version-specific URLs.
+#[tauri::command]
+pub fn open_external_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        // Tight gate to keep this from being repurposed as a generic
+        // shell-out. We only ever want to open https / http URLs.
+        return Err("only http(s) URLs are allowed".to_string());
+    }
+    std::process::Command::new("xdg-open")
+        .arg(&url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not open URL: {e}"))
+}

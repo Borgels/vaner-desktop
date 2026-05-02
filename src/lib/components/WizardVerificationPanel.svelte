@@ -62,6 +62,11 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
   let showAll = $state(false);
+  /** Per-row spinner flag while a single Repair is in flight, so
+   *  clicking Install on Cursor doesn't grey out every other card.
+   *  Pre-fix the panel reloaded the entire list — visually noisy and
+   *  encouraged the user to think they had to wait for every client. */
+  let busy = $state<Record<string, boolean>>({});
 
   /** A leverage-aware verification phrase — exercises both a basic
    *  tool call and the prepared-work surface in a single round-trip
@@ -145,18 +150,46 @@
     }
   }
 
+  /** Re-verify a single client without disturbing the rest. The full
+   *  `loadVerification()` walks every supported client; that's
+   *  expensive (8+ subprocesses) and visually trashes the panel
+   *  whenever the user clicks Install on one row. Refresh just the
+   *  one. */
+  async function reverifyOne(clientId: string) {
+    try {
+      const fetched = await invoke<ClientVerification[]>("clients_verify", {
+        repoRoot,
+      });
+      // The CLI returns the full set; pluck just the one row we care
+      // about and patch it into our existing array. Keeps the rest of
+      // the rows visually stable even if their underlying state has
+      // drifted (it'll catch up on next full reload).
+      const next = fetched.find((r) => r.client_id === clientId);
+      if (next) {
+        results = results.map((r) => (r.client_id === clientId ? next : r));
+      }
+    } catch (err) {
+      // Fall back to a full refresh only when the targeted reverify
+      // failed; the user still gets *some* update.
+      await loadVerification();
+      throw err;
+    }
+  }
+
   async function handleRepair(clientId: string) {
     if (!onRepair) return;
+    busy = { ...busy, [clientId]: true };
     try {
       await onRepair(clientId);
-      // Re-verify after the repair attempt.
-      await loadVerification();
+      await reverifyOne(clientId);
     } catch (err) {
       showToast(
-        err instanceof Error ? err.message : `Repair failed for ${clientId}`,
+        err instanceof Error ? err.message : `Could not finish wiring ${clientId}`,
         "attention",
         3500,
       );
+    } finally {
+      busy = { ...busy, [clientId]: false };
     }
   }
 </script>
@@ -219,7 +252,12 @@
           {#if r.overall === "wired-mcp-only" || r.overall === "partial" || r.overall === "missing"}
             <div class="row-actions">
               <V1GhostButton
-                title="Repair"
+                title={busy[r.client_id]
+                  ? "Wiring…"
+                  : r.overall === "missing"
+                    ? "Install"
+                    : "Finish wiring"}
+                disabled={busy[r.client_id] === true}
                 onclick={() => void handleRepair(r.client_id)}
               />
             </div>

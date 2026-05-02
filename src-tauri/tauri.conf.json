@@ -37,7 +37,7 @@
     }
   },
   "bundle": {
-    "active": false,
+    "active": true,
     "targets": [
       "deb",
       "appimage",

@@ -18,11 +18,11 @@
   import VanerError from "$lib/components/popover-states/Error.svelte";
   import Idle from "$lib/components/popover-states/Idle.svelte";
   import Paused from "$lib/components/popover-states/Paused.svelte";
-  import NeedsWorkspace from "$lib/components/popover-states/NeedsWorkspace.svelte";
+  import NotWiredToAnyClient from "$lib/components/popover-states/NotWiredToAnyClient.svelte";
   import type { PreparedMoment, SourceRef } from "$lib/state/types.js";
 
   const STATES = [
-    "needsWorkspace",
+    "notWiredToAnyClient",
     "engineMissing",
     "notInstalled",
     "installedNotConnected",
@@ -114,8 +114,10 @@
 {:else}
   <div class="frame">
     <div class="popover">
-      {#if kind === "needsWorkspace"}
-        <NeedsWorkspace />
+      {#if kind === "notWiredToAnyClient"}
+        <NotWiredToAnyClient
+          detected={{ total: 4, wiredCount: 0, wiredLabels: [] }}
+        />
       {:else if kind === "engineMissing"}
         <EngineMissing install={{ kind: "notDetected" }} />
       {:else if kind === "notInstalled"}

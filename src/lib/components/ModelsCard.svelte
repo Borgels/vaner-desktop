@@ -10,7 +10,6 @@
 -->
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import V1Body from "$lib/components/primitives/V1Body.svelte";
   import V1GhostButton from "$lib/components/primitives/V1GhostButton.svelte";
   import V1PrimaryButton from "$lib/components/primitives/V1PrimaryButton.svelte";
   import { invoke } from "@tauri-apps/api/core";
@@ -26,29 +25,58 @@
     useModel,
   } from "$lib/stores/ollama.js";
   import { showToast } from "$lib/stores/toast.js";
-
-  const SUGGESTED = [
-    {
-      name: "qwen3.5:8b",
-      title: "Qwen 3.5 · 8B",
-      subtitle: "Balanced default. Good on most Linux boxes with ≥16 GB RAM.",
-    },
-    {
-      name: "qwen2.5-coder:32b",
-      title: "Qwen 2.5 Coder · 32B",
-      subtitle: "Coding-focused. Wants ≥24 GB VRAM or a beefy RAM machine.",
-    },
-    {
-      name: "gemma2:2b",
-      title: "Gemma 2 · 2B",
-      subtitle: "Tiny fallback for laptops or constrained boxes.",
-    },
-  ];
+  import {
+    loadModelRecommendation,
+    type ModelsRecommendedPayload,
+    type RecommendedModelEntry,
+  } from "$lib/stores/setup.js";
 
   let customName = $state("");
   let busyAction = $state(false);
   let confirmRemove = $state<string | null>(null);
   let currentModel = $state("");
+  let recommendation = $state<ModelsRecommendedPayload | null>(null);
+
+  // Suggestions for the "Pull a new model" section come from the
+  // daemon's hardware-aware recommender, not a hardcoded list. The
+  // engine has the registry of which models fit which budget; the
+  // desktop just displays whatever it returns. Filter to alternatives
+  // that actually fit the user's hardware budget, plus the recommended
+  // pick — no point offering a 32B coder model on a 4 GB VRAM laptop,
+  // and equally no point offering a 2B fallback on a 96 GB workstation.
+  const suggestedFromRegistry = $derived.by<RecommendedModelEntry[]>(() => {
+    if (!recommendation) return [];
+    const budgetGb = recommendation.budget?.effective_gb_q4 ?? null;
+    const fits = (m: RecommendedModelEntry) => {
+      if (budgetGb == null) return true;
+      const need =
+        m.recommended_effective_memory_gb ??
+        m.min_effective_memory_gb ??
+        m.min_effective_gb_q4 ??
+        0;
+      return need <= budgetGb;
+    };
+    const all: RecommendedModelEntry[] = [];
+    if (recommendation.selected) all.push(recommendation.selected);
+    for (const alt of recommendation.alternatives ?? []) {
+      if (fits(alt) && !all.some((m) => modelKey(m) === modelKey(alt))) all.push(alt);
+    }
+    return all;
+  });
+
+  function modelKey(m: RecommendedModelEntry): string {
+    return m.model_id ?? m.id ?? m.family ?? "";
+  }
+  function modelDisplayTitle(m: RecommendedModelEntry): string {
+    return m.display_name ?? m.family ?? m.id ?? "Local model";
+  }
+  function modelDisplaySize(m: RecommendedModelEntry): string {
+    const gb =
+      m.recommended_effective_memory_gb ??
+      m.min_effective_memory_gb ??
+      m.min_effective_gb_q4;
+    return gb ? `${gb} GB` : "";
+  }
 
   // Read the live backend.model out of `vaner status --json`, which
   // the desktop already shells via the diagnostics_status Tauri
@@ -66,7 +94,13 @@
 
   onMount(async () => {
     await bootstrapOllamaListeners();
-    await Promise.all([refreshOllama(), refreshCurrentModel()]);
+    await Promise.all([
+      refreshOllama(),
+      refreshCurrentModel(),
+      (async () => {
+        recommendation = await loadModelRecommendation();
+      })(),
+    ]);
   });
 
   onDestroy(() => {
@@ -177,19 +211,11 @@
   {/if}
 
   {#if !$ollamaState.available}
-    <V1Body
-      muted
-      text={$ollamaState.detail || "Ollama is unreachable. Install it and start the server, then come back here."}
-    />
+    <p class="hint">{$ollamaState.detail || "Ollama is unreachable."}</p>
     <div class="actions">
       <V1GhostButton title="Retry" onclick={refreshOllama} />
     </div>
   {:else}
-    <V1Body
-      muted
-      text="Local models for Vaner's ponder/answer loop. Your AI agent (Cursor, Claude Code, etc.) is configured separately and isn't affected by this picker."
-    />
-
     {#if $ollamaState.models.length === 0}
       <p class="empty">No models pulled yet. Grab one below to get started.</p>
     {:else}
@@ -226,22 +252,34 @@
     {/if}
 
     <div class="pull-section">
-      <span class="section-label">Pull a new model</span>
+      <span class="section-label">Recommended for your hardware</span>
       <div class="suggested">
-        {#each SUGGESTED as s (s.name)}
-          {@const installed = $ollamaState.models.some((m) => m.name === s.name)}
+        {#each suggestedFromRegistry as s, i (modelKey(s))}
+          {@const key = modelKey(s)}
+          {@const installed = $ollamaState.models.some((m) => m.name === key)}
+          {@const isTopPick = i === 0}
           <button
             type="button"
             class="suggest-row"
+            class:top={isTopPick}
             disabled={busyAction || !!$activePull || installed}
-            onclick={() => handlePull(s.name)}
+            onclick={() => handlePull(key)}
           >
-            <code class="suggest-name">{s.name}</code>
-            <span class="suggest-title">{s.title}</span>
-            <span class="suggest-sub">{s.subtitle}</span>
-            {#if installed}<span class="badge muted">INSTALLED</span>{/if}
+            <code class="suggest-name">{key}</code>
+            <span class="suggest-title">{modelDisplayTitle(s)}</span>
+            {#if modelDisplaySize(s)}
+              <span class="suggest-size">{modelDisplaySize(s)}</span>
+            {/if}
+            {#if installed}
+              <span class="badge muted">INSTALLED</span>
+            {:else if isTopPick}
+              <span class="badge top">RECOMMENDED</span>
+            {/if}
           </button>
         {/each}
+        {#if suggestedFromRegistry.length === 0}
+          <p class="empty">Loading recommendations…</p>
+        {/if}
       </div>
       <div class="custom-row">
         <input
@@ -455,16 +493,30 @@
     color: var(--vd-fg-1);
     font-weight: 500;
   }
-  .suggest-sub {
-    grid-column: 2 / span 2;
-    grid-row: 2;
-    font-size: 11px;
+  .hint {
+    margin: 0;
+    font-size: 11.5px;
     color: var(--vd-fg-3);
-    line-height: 1.4;
+    line-height: 1.5;
+  }
+  .suggest-size {
+    grid-column: 2;
+    grid-row: 2;
+    font-size: 10.5px;
+    color: var(--vd-fg-3);
+    font-family: var(--vd-font-mono);
   }
   .suggest-row .badge {
     grid-column: 3;
     grid-row: 1;
+  }
+  .suggest-row.top {
+    border-color: color-mix(in srgb, var(--vd-amber) 50%, transparent);
+    background: color-mix(in srgb, var(--vd-amber) 6%, var(--vd-bg-1));
+  }
+  .badge.top {
+    background: color-mix(in srgb, var(--vd-amber) 18%, transparent);
+    color: var(--vd-amber);
   }
 
   .custom-row {

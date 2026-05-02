@@ -60,3 +60,10 @@ src-tauri/gen/
 /src/lib/contract/WorkStyle.ts
 /src/lib/contract/serde_json/
 /.vaner/
+
+# Per-user agent integration files written by `vaner clients install`.
+# These are local-machine artefacts (the user's wired clients), not
+# project source.
+/.claude/
+/.cursor/
+/AGENTS.md

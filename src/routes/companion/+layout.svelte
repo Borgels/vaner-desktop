@@ -16,6 +16,10 @@
   import VSectionLabel from "$lib/components/primitives/VSectionLabel.svelte";
   import NavGlyph from "$lib/components/primitives/NavGlyph.svelte";
   import ToastStack from "$lib/components/ToastStack.svelte";
+  import {
+    startEngineStatusPolling,
+    stopEngineStatusPolling,
+  } from "$lib/stores/engine-status.js";
 
   let { children } = $props();
 
@@ -48,6 +52,13 @@
 
   let unlisten: UnlistenFn | null = null;
   onMount(async () => {
+    // Tauri webviews are isolated JS contexts — the popover's poll
+    // loop doesn't share state with the companion. Without this the
+    // companion's engineStatus store sits at its initial stub
+    // (reachable=true) forever, and the Engine pane disagrees with
+    // the popover about whether the engine is up. Same store, same
+    // command, just one poller per window.
+    startEngineStatusPolling();
     // The Rust side fires `companion:navigate` when the user reopens
     // the window from the tray with a different requested pane. Sync
     // our query string when that happens.
@@ -56,7 +67,10 @@
       if (tab !== active) navigate(tab);
     });
   });
-  onDestroy(() => unlisten?.());
+  onDestroy(() => {
+    unlisten?.();
+    stopEngineStatusPolling();
+  });
 
   const showTimeline = $derived(tabs.find((t) => t.id === active)?.showsTimeline ?? false);
 </script>

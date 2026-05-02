@@ -24,6 +24,7 @@
 //! 200 on the static index without needing the prediction surface to
 //! be ready (`--with-engine` may still be initialising).
 
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -96,6 +97,12 @@ pub async fn ensure_engine_running() -> BringUpResult {
         };
     }
 
+    // No fallback to $HOME: `vaner up --path <home>` rejects the
+    // path because a home directory isn't a repo (no .git, no
+    // workspace marker). The popover layer is responsible for not
+    // surfacing a "Restart engine" CTA in that state — the right
+    // CTA is "finish setup", not "try to start a daemon against a
+    // non-repo and watch it bounce."
     let Some(workspace) = crate::workspace::resolve() else {
         return BringUpResult {
             outcome: BringUpOutcome::NoWorkspace,
@@ -195,7 +202,7 @@ enum UpAttempt {
     SpawnError(std::io::Error),
 }
 
-async fn up_run_json(bin: &str, workspace: &str) -> UpAttempt {
+async fn up_run_json(bin: &Path, workspace: &str) -> UpAttempt {
     let output = Command::new(bin)
         .arg("up")
         .arg("--detach")
@@ -256,7 +263,7 @@ async fn up_run_json(bin: &str, workspace: &str) -> UpAttempt {
 /// Pre-0.8.9 fallback. Returns the stderr (possibly empty) so the
 /// caller can use it as the `detail` field if the cockpit poll later
 /// times out.
-async fn up_run_legacy(bin: &str, workspace: &str) -> String {
+async fn up_run_legacy(bin: &Path, workspace: &str) -> String {
     let output = Command::new(bin)
         .arg("up")
         .arg("--detach")

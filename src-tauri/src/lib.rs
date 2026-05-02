@@ -17,7 +17,7 @@
 //! The public entry is [`run`], called from `main.rs`.
 
 use std::sync::Arc;
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 use tokio::sync::Mutex;
 
 use vaner_contract::HttpEngineClient;
@@ -27,10 +27,12 @@ pub mod bring_up;
 pub mod clients;
 pub mod commands;
 pub mod companion;
+pub mod daemon_audit;
 pub mod diagnostics;
 pub mod engine;
 pub mod engine_config;
 pub mod engine_service;
+pub mod engine_status_task;
 pub mod ollama;
 pub mod onboarding;
 pub mod popover;
@@ -61,32 +63,113 @@ impl Default for AppState {
     }
 }
 
+/// Strip AppImage-injected env vars so they don't leak to child
+/// processes. The AppImage runtime sets `PYTHONHOME` / `PYTHONPATH` /
+/// `LD_LIBRARY_PATH` pointing into the AppImage's `/tmp/.mount_*`
+/// directory — useful for Python/libs *inside* the AppImage, lethal
+/// for anything we shell out to (notably `vaner`, which is itself a
+/// Python CLI installed at the user's `~/.local/bin/vaner`). Without
+/// this strip, every `vaner` invocation crashes with
+/// "ModuleNotFoundError: No module named 'encodings'" because the
+/// child's Python tries to load stdlib from the AppImage mount.
+///
+/// Done at the top of `run()` before any worker is spawned so the
+/// edition-2024 `set_var`/`remove_var` race is moot.
+fn strip_appimage_env() {
+    // SAFETY: called once, single-threaded, before any task spawns.
+    unsafe {
+        for var in [
+            "PYTHONHOME",
+            "PYTHONPATH",
+            "LD_LIBRARY_PATH",
+            "LD_PRELOAD",
+            "APPDIR",
+            "APPIMAGE",
+            "ARGV0",
+            "GIO_MODULE_DIR",
+            "GTK_PATH",
+            "PERL5LIB",
+        ] {
+            std::env::remove_var(var);
+        }
+    }
+}
+
 /// App entry. Called from both `main.rs` and mobile wrappers.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    strip_appimage_env();
+
     let state = AppState::default();
     let engine = state.engine.clone();
+    let engine_status_cache = Arc::new(engine_status_task::EngineStatusCache::new());
 
     tauri::Builder::default()
+        // Single-instance must be registered first so the dbus
+        // handshake runs before any other plugin spawns long-lived
+        // tasks. When a second `vaner-desktop` is launched (tray
+        // double-click, autostart misfire, manual relaunch), this
+        // closure runs in the *first* process — we surface the
+        // existing popover instead of letting two trays + two
+        // bring-up tasks duke it out over the same state.json.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            let _ = popover::show(app);
+        }))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
+        .manage(engine_status_cache.clone())
         .setup(move |app| {
-            // Resolve the user's persisted workspace and export it as
-            // VANER_PATH so any helper that hasn't been migrated to
-            // crate::workspace::resolve* yet still sees a stable path.
-            // No-op when the user hasn't picked one yet — the popover
-            // surfaces the picker rather than firing onboarding.
+            // Production-readiness: the desktop does NOT start a
+            // daemon, adopt a workspace, or watch any repo unless
+            // the user (or a wired MCP client) explicitly causes it
+            // to. Two behaviours that previously violated this:
+            //
+            //   - `workspace::adopt_running_cockpit` silently
+            //     persisted whichever workspace happened to have a
+            //     cockpit running into the desktop's state.json.
+            //     Side effect: if a stale `vaner up` was lingering
+            //     from a CLI session, the desktop "inherited" it
+            //     and started feeding scenario data the user never
+            //     asked for.
+            //
+            //   - `bring_up::spawn_at_startup` shelled `vaner up`
+            //     on every launch, immediately spinning up the
+            //     ponder loop with whatever workspace was persisted
+            //     — including stale adoptions from the bullet above.
+            //
+            // Both are removed from the startup path. The Engine
+            // pane's "Start engine" button still drives bring-up
+            // explicitly, and a wired MCP client spawns its own
+            // `vaner mcp --path` invocation; that's how Vaner
+            // becomes active on a fresh install. Until then, the
+            // desktop is a viewer for whatever the user / their
+            // clients started, and nothing more.
+            //
+            // export_to_env still runs because it only mirrors
+            // `state.json` into the process env — no work happens.
             workspace::export_to_env(app.handle());
 
-            // Auto-bring-up: probe the cockpit, and if it's down (and
-            // the user has picked a workspace), shell `vaner up
-            // --detach` ourselves. Background task — the app starts
-            // immediately and the popover reacts to the
-            // `engine:bring-up` event when it lands.
-            bring_up::spawn_at_startup(app.handle().clone());
+            // Stray-daemon audit. Runs once at startup and emits the
+            // result so the popover/companion can prompt the user
+            // about rogue `vaner daemon / up / proxy / mcp`
+            // processes the desktop didn't spawn. Empty-result =
+            // silent; non-empty = a Diagnostics-style banner with
+            // a "Stop these" button. Cheap (read /proc once).
+            let audit_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let strays = daemon_audit::find_strays();
+                let _ = audit_app.emit("daemon:strays", &strays);
+            });
+
+            // Single-source engine status. One Rust-side poll loop
+            // shells `vaner status --json`, caches the result, and
+            // emits an `engine:status` event whenever anything
+            // changes. Every webview reads through this cache —
+            // popover and companion can no longer drift.
+            engine_status_task::spawn(app.handle().clone(), engine_status_cache.clone());
 
             // Kick off the SSE snapshot stream; the Svelte store
             // listens on `predictions:snapshot`.
@@ -132,6 +215,7 @@ pub fn run() {
             commands::adopt_prediction,
             commands::app_quit,
             commands::window_hide,
+            commands::open_external_url,
             updater::install_update,
             updater::update_install_kind,
             updater::update_open_release,
@@ -162,6 +246,7 @@ pub fn run() {
             onboarding::open_onboarding,
             onboarding::close_onboarding,
             engine::engine_status,
+            engine_status_task::engine_status_boost,
             agent_detector::detect_agents,
             ollama::ollama_list,
             ollama::ollama_pull,
@@ -178,6 +263,11 @@ pub fn run() {
             engine_config::compute_config_get,
             engine_config::compute_config_set,
             engine_config::compute_apply_preset,
+            engine_config::backend_config_get,
+            engine_config::backend_apply_preset,
+            engine_config::backend_classify,
+            daemon_audit::audit_strays,
+            daemon_audit::kill_strays,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -66,7 +66,11 @@ pub async fn set_local_model(model_id: String) -> Result<String, String> {
     if model_id.trim().is_empty() {
         return Err("model_id is required".to_string());
     }
-    run_vaner(&["config", "set", "backend.model", &model_id], true)
-        .await
-        .map(|_| format!("backend.model set to {model_id}"))
+    let path = crate::workspace::resolve_str();
+    run_vaner(
+        &["config", "set", "--path", &path, "backend.model", &model_id],
+        true,
+    )
+    .await
+    .map(|_| format!("backend.model set to {model_id}"))
 }

@@ -7,7 +7,7 @@
 // backup-rotated writes, and idempotent merges.
 
 import { invoke } from "@tauri-apps/api/core";
-import { writable, type Readable } from "svelte/store";
+import { derived, writable, type Readable } from "svelte/store";
 
 // Wire types matching the Rust serde structs in src-tauri/src/clients.rs.
 export type DetectedClient = {
@@ -21,13 +21,24 @@ export type DetectedClient = {
   detail: string;
 };
 
+export type WriteLayerResult = {
+  layer: string;
+  applicable: boolean;
+  /** Broader than pre-Phase-C: "added" / "updated" / "skipped" /
+   *  "failed" / "not-applicable". We don't enum-narrow it because
+   *  the CLI may add new layers (e.g. "plugin"). */
+  action: string;
+  path: string | null;
+  error: string | null;
+};
+
 export type WriteResult = {
   client_id: string;
-  path: string | null;
-  action: "added" | "updated" | "skipped" | "failed";
-  backup: string | null;
-  error: string | null;
-  manual_snippet: string | null;
+  label: string;
+  detected: boolean;
+  /** "ready" / "wired-mcp-only" / "partial" / "missing" / "not-detected" */
+  overall: string;
+  layers: WriteLayerResult[];
 };
 
 export type ClientDrift = {
@@ -79,6 +90,28 @@ async function patch(updater: (state: ClientsState) => Partial<ClientsState>): P
 }
 
 export const clients: Readable<ClientsState> = { subscribe: internal.subscribe };
+
+/** Reducer-input projection of the clients store. The reducer cares
+ *  only about (a) whether the detector has run, and (b) how many
+ *  clients have Vaner wired in — not the full per-client metadata.
+ *  `total === 0` means the detector hasn't completed yet (or failed),
+ *  which the reducer treats as "don't gate, fall through to engine
+ *  state". */
+export const clientDetectStatus = derived<typeof clients, {
+  total: number;
+  wiredCount: number;
+  wiredLabels: string[];
+}>(internal, ($state) => {
+  if (!$state.hasInitialScan) {
+    return { total: 0, wiredCount: 0, wiredLabels: [] };
+  }
+  const wired = $state.clients.filter((c) => c.configured);
+  return {
+    total: $state.clients.length,
+    wiredCount: wired.length,
+    wiredLabels: wired.map((c) => c.label),
+  };
+});
 
 export async function rescan(repoRoot: string = defaultRepoRoot()): Promise<void> {
   await patch(() => ({ isScanning: true }));

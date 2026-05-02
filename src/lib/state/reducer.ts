@@ -11,6 +11,7 @@
 import { isAdoptable, type PredictedPrompt, type PreparedWorkCard } from "$lib/contract/types.js";
 import type {
   AgentSuggestion,
+  ClientDetectStatus,
   EngineStatus,
   LearningProgress,
   PreparedList,
@@ -26,11 +27,15 @@ export interface ReducerInputs {
   anyAgentRunning: boolean;
   silentHours: boolean;
   hasAnySource: boolean;
-  /** True when no workspace path has been picked yet. Lands the popover
-   *  on `.needsWorkspace` ahead of every other state — the desktop
-   *  cannot drive the CLI without a target repo, so showing
-   *  install/error/onboarding nudges first would be misleading. */
-  workspaceMissing: boolean;
+  /** Snapshot of which AI clients have Vaner registered. When zero
+   *  clients are wired in, the desktop has no consumer for the
+   *  daemon — surfacing engine state ahead of "go integrate Vaner
+   *  somewhere" is putting the cart before the horse. The popover
+   *  routes to `.notWiredToAnyClient` until the detector confirms
+   *  ≥1 wired client. Defaults are tolerant: if `detected.total = 0`
+   *  the detector hasn't run yet (or failed), and we don't gate on
+   *  it — falling through to whichever engine state is real. */
+  clientDetect: ClientDetectStatus;
   /** 0.8.0 prediction-centric pondering. Defaults to [] for callers
    *  that haven't been updated to the new shape. */
   activePredictions: PredictedPrompt[];
@@ -47,15 +52,6 @@ export interface ReducerInputs {
 }
 
 export function reduce(i: ReducerInputs): VanerState {
-  // 0. No workspace picked yet → .needsWorkspace. Comes before
-  //    .notInstalled because a missing CLI is moot if the desktop
-  //    doesn't even know which repo to install for. The picker is
-  //    the first action the user takes after the popover opens on
-  //    a fresh `.deb` install.
-  if (i.workspaceMissing) {
-    return { kind: "needsWorkspace" };
-  }
-
   // 1a. Vaner CLI itself isn't installed → .notInstalled. This MUST
   //     come before the unreachable branch: a fresh `vaner-desktop`
   //     install on a machine that's never seen the CLI would
@@ -65,8 +61,25 @@ export function reduce(i: ReducerInputs): VanerState {
     return { kind: "notInstalled" };
   }
 
-  // 1b. Engine unreachable → .error (overrides pause; the user needs
-  //     to know the engine is down even if they asked for quiet)
+  // 1b. No MCP client has Vaner wired in → .notWiredToAnyClient.
+  //     This MUST sit before the engine-reachability check: with
+  //     production-mode auto-bring-up disabled, a fresh install
+  //     legitimately has no daemon running until a client invokes
+  //     `vaner mcp`. Showing .error in that window is wrong — the
+  //     engine isn't broken, it's idle because no consumer exists.
+  //     `total === 0` (detector hasn't completed yet) is treated
+  //     as wiredCount === 0 too, since "show the wire-a-client
+  //     panel for half a second on cold start" is a better UX than
+  //     "flash a scary engine-error then settle into the right
+  //     state."
+  if (i.clientDetect.wiredCount === 0) {
+    return { kind: "notWiredToAnyClient", detected: i.clientDetect };
+  }
+
+  // 1c. Clients are wired but the engine isn't reachable. Now it's
+  //     a real error — the user expects Vaner to be live somewhere
+  //     and the cockpit is silent. Overrides pause; this is
+  //     actionable.
   if (!i.status.reachable) {
     return {
       kind: "error",

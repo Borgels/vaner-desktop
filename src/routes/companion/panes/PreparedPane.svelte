@@ -6,6 +6,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import V1Kicker from "$lib/components/primitives/V1Kicker.svelte";
+  import DocsLink from "$lib/components/primitives/DocsLink.svelte";
   import V1Headline from "$lib/components/primitives/V1Headline.svelte";
   import V1Body from "$lib/components/primitives/V1Body.svelte";
   import V1PrimaryButton from "$lib/components/primitives/V1PrimaryButton.svelte";
@@ -26,7 +27,10 @@
 </script>
 
 <header class="hd">
-  <V1Kicker text="Prepared" />
+  <div class="kicker-row">
+    <V1Kicker text="Prepared" />
+    <DocsLink path="/docs/prepared-work" />
+  </div>
   <V1Headline text="What Vaner has ready for you" size={22} />
   <V1Body
     muted
@@ -93,6 +97,12 @@
     flex-direction: column;
     gap: 6px;
     margin-bottom: 24px;
+  }
+  .kicker-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
   }
   .lead-section {
     margin-bottom: 28px;

@@ -32,14 +32,26 @@ pub struct EngineStatusOut {
     pub detail: Option<String>,
 }
 
+/// Tauri command — returns the cached snapshot the background poller
+/// in [`crate::engine_status_task`] keeps fresh. Every window's
+/// `engineStatus` store reads through this, so they all see the same
+/// boolean at the same time. The `engine:status` event the task
+/// emits is the push counterpart for live UIs.
 #[tauri::command]
-pub async fn engine_status() -> Result<EngineStatusOut, String> {
+pub async fn engine_status(
+    cache: tauri::State<'_, std::sync::Arc<crate::engine_status_task::EngineStatusCache>>,
+) -> Result<EngineStatusOut, String> {
+    Ok(cache.snapshot().await)
+}
+
+/// Bypasses the cache and shells `vaner status` directly. Used by the
+/// background poller and by callers that need a freshness guarantee
+/// (post-bring-up). Pure function over `vaner status --json`.
+pub async fn probe_engine_status() -> EngineStatusOut {
     let bin = match resolve_vaner_bin() {
         Ok(path) => path,
         Err(message) => {
-            // CLI not on PATH and no $VANER_BIN override. The reducer
-            // should land on `.notInstalled` rather than `.error`.
-            return Ok(EngineStatusOut {
+            return EngineStatusOut {
                 reachable: false,
                 cli_missing: true,
                 files_watched: 0,
@@ -47,11 +59,11 @@ pub async fn engine_status() -> Result<EngineStatusOut, String> {
                 uptime_minutes: 0,
                 indexing_kind: "idle".to_string(),
                 detail: Some(message),
-            });
+            };
         }
     };
     let workspace = crate::workspace::resolve_str();
-    let output = Command::new(&bin)
+    let output = match Command::new(&bin)
         .arg("status")
         .arg("--json")
         .arg("--path")
@@ -60,13 +72,26 @@ pub async fn engine_status() -> Result<EngineStatusOut, String> {
         .stderr(Stdio::piped())
         .output()
         .await
-        .map_err(|e| format!("failed to spawn `vaner status`: {e}"))?;
+    {
+        Ok(o) => o,
+        Err(e) => {
+            return EngineStatusOut {
+                reachable: false,
+                cli_missing: false,
+                files_watched: 0,
+                sources_count: 0,
+                uptime_minutes: 0,
+                indexing_kind: "idle".to_string(),
+                detail: Some(format!("failed to spawn `vaner status`: {e}")),
+            };
+        }
+    };
 
     if !output.status.success() {
         // CLI exists but `vaner status` returned non-zero — daemon is
         // down or in a degraded state. The reducer surfaces .error
         // (actionable: restart engine).
-        return Ok(EngineStatusOut {
+        return EngineStatusOut {
             reachable: false,
             cli_missing: false,
             files_watched: 0,
@@ -74,12 +99,24 @@ pub async fn engine_status() -> Result<EngineStatusOut, String> {
             uptime_minutes: 0,
             indexing_kind: "idle".to_string(),
             detail: Some(String::from_utf8_lossy(&output.stderr).trim().to_string()),
-        });
+        };
     }
 
     let raw = String::from_utf8_lossy(&output.stdout);
-    let parsed: Value =
-        serde_json::from_str(&raw).map_err(|e| format!("could not parse status JSON: {e}"))?;
+    let parsed: Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(e) => {
+            return EngineStatusOut {
+                reachable: false,
+                cli_missing: false,
+                files_watched: 0,
+                sources_count: 0,
+                uptime_minutes: 0,
+                indexing_kind: "idle".to_string(),
+                detail: Some(format!("could not parse status JSON: {e}")),
+            };
+        }
+    };
 
     let reachable = parsed
         .get("cockpit")
@@ -102,7 +139,7 @@ pub async fn engine_status() -> Result<EngineStatusOut, String> {
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
-    Ok(EngineStatusOut {
+    EngineStatusOut {
         reachable,
         cli_missing: false,
         files_watched: scenarios_ready, // approximation; honest signal of "engine has read N things"
@@ -114,5 +151,5 @@ pub async fn engine_status() -> Result<EngineStatusOut, String> {
         // and ready for the day this changes.
         indexing_kind: "idle".into(),
         detail,
-    })
+    }
 }

@@ -37,14 +37,40 @@ struct DetectResponse {
     clients: Vec<DetectedClient>,
 }
 
+/// One layer's outcome inside a single-client install result. Matches
+/// the shape `vaner clients install --format json` emits as of the
+/// multi-layer (Phase C) rollout: each client produces a results
+/// entry with its own per-layer breakdown (`mcp` / `primer` / `skill`
+/// / `hook`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WriteLayerResult {
+    pub layer: String,
+    #[serde(default)]
+    pub applicable: bool,
+    /// "added" / "updated" / "skipped" / "failed" / "not-applicable"
+    /// — broader than the pre-multi-layer set so we just carry it
+    /// through as a string.
+    #[serde(default)]
+    pub action: String,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WriteResult {
     pub client_id: String,
-    pub path: Option<String>,
-    pub action: String, // "added" / "updated" / "skipped" / "failed"
-    pub backup: Option<String>,
-    pub error: Option<String>,
-    pub manual_snippet: Option<String>,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub detected: bool,
+    /// "ready" / "wired-mcp-only" / "partial" / "missing" /
+    /// "not-detected" — the overall rollup the user sees.
+    #[serde(default)]
+    pub overall: String,
+    #[serde(default)]
+    pub layers: Vec<WriteLayerResult>,
 }
 
 #[derive(Debug, Deserialize)]

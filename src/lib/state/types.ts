@@ -152,10 +152,26 @@ export interface WatchingSummary {
 // VanerState — discriminated union driven by the reducer
 // -----------------------------------------------------------------------------
 
+/** Snapshot of which AI clients have Vaner registered as an MCP server.
+ *  `wiredCount` of zero on a fresh install drives the popover into
+ *  `.notWiredToAnyClient`; the desktop is a viewer for an MCP server,
+ *  so it makes no sense to surface engine state until at least one
+ *  client is configured to talk to it. */
+export interface ClientDetectStatus {
+  /** Total number of clients the detector probed (Cursor, Claude
+   *  Code, Zed, Claude Desktop, Continue, …). */
+  total: number;
+  /** Of those, how many have Vaner wired into their MCP config. */
+  wiredCount: number;
+  /** Names of the wired clients ("Cursor", "Claude Code", …) — used
+   *  for the popover-state success message. Empty when wiredCount=0. */
+  wiredLabels: string[];
+}
+
 export type VanerState =
-  | { kind: "needsWorkspace" }
   | { kind: "engineMissing"; install: InstallFlowState }
   | { kind: "notInstalled" }
+  | { kind: "notWiredToAnyClient"; detected: ClientDetectStatus }
   | { kind: "installedNotConnected" }
   | { kind: "learning"; progress: LearningProgress }
   | { kind: "watching"; summary: WatchingSummary; silentHours: boolean }
