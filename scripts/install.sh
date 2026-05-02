@@ -8,14 +8,18 @@
 # (with detached-signature verification) if apt / sudo isn't
 # available or the user explicitly opts out.
 #
-#   # recommended
+#   # recommended (SHA-pinned mirror on vaner-web)
+#   curl -fsSL https://vaner.ai/desktop.sh | bash
+#
+#   # canonical source if vaner.ai is unreachable:
 #   curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop/main/scripts/install.sh | bash
 #
 #   # one-off install, no apt-repo registration:
-#   VANER_MODE=deb curl -fsSL .../install.sh | bash
+#   VANER_MODE=deb curl -fsSL https://vaner.ai/desktop.sh | bash
 #
 #   # pinned version:
-#   VANER_DESKTOP_VERSION=v0.1.0 VANER_MODE=deb curl -fsSL .../install.sh | bash
+#   VANER_DESKTOP_VERSION=v0.1.0 VANER_MODE=deb \
+#     curl -fsSL https://vaner.ai/desktop.sh | bash
 #
 # Regardless of mode, the script refuses to install unless the
 # downloaded pubkey's fingerprint matches the pin below. That pin is
