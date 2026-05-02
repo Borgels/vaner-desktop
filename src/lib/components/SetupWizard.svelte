@@ -572,6 +572,7 @@
 
           <WizardVerificationPanel
             repoRoot={repoRootForVerification()}
+            mode="select"
             onRepair={(clientId) => repairClient(clientId)}
           />
 

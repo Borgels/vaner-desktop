@@ -23,6 +23,7 @@
   import V1Kicker from "$lib/components/primitives/V1Kicker.svelte";
   import V1Body from "$lib/components/primitives/V1Body.svelte";
   import V1GhostButton from "$lib/components/primitives/V1GhostButton.svelte";
+  import V1PrimaryButton from "$lib/components/primitives/V1PrimaryButton.svelte";
   import Spinner from "$lib/components/primitives/Spinner.svelte";
   import { showToast } from "$lib/stores/toast.js";
 
@@ -54,14 +55,35 @@
      *  ``partial`` or ``missing`` state. The wizard wires this to
      *  ``clients_install`` for the matching id. */
     onRepair?: (clientId: string) => void | Promise<void>;
+    /** "select" surfaces a checkbox-driven opt-in flow with a single
+     *  "Install Vaner into selected" button — the right framing during
+     *  onboarding, when the user hasn't installed Vaner anywhere yet
+     *  and "Repair" reads as nonsensical.
+     *  "verify" is the post-install table view (status badges + per-row
+     *  Install for partials) used by the companion's Agents pane and
+     *  by the wizard once the user has confirmed the selection.
+     *  Defaults to "verify" so existing call sites keep their behaviour. */
+    mode?: "select" | "verify";
   };
 
-  const { repoRoot, onRepair }: Props = $props();
+  const { repoRoot, onRepair, mode = "verify" }: Props = $props();
 
   let results = $state<ClientVerification[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
   let showAll = $state(false);
+  /** Tracks the user's per-client opt-in in select mode. Pre-checked
+   *  for any detected client that isn't already `ready`; ready rows
+   *  are surfaced as "already wired" without a checkbox. */
+  let selected = $state<Record<string, boolean>>({});
+  let bulkInstalling = $state(false);
+  /** Internal flip from "select" → "verify" once the bulk install
+   *  has run. Keeps the wizard on the same panel instance so the
+   *  user sees the results without a route change. */
+  let submitted = $state(false);
+  const view = $derived<"select" | "verify">(
+    mode === "select" && !submitted ? "select" : "verify",
+  );
   /** Per-row spinner flag while a single Repair is in flight, so
    *  clicking Install on Cursor doesn't grey out every other card.
    *  Pre-fix the panel reloaded the entire list — visually noisy and
@@ -84,6 +106,16 @@
         repoRoot,
       });
       results = fetched;
+      // Default-pick every detected client that isn't already ready.
+      // Already-wired rows are skipped — re-installing them is just
+      // noise. The user can still toggle anyone they want manually.
+      if (mode === "select" && Object.keys(selected).length === 0) {
+        const next: Record<string, boolean> = {};
+        for (const r of fetched) {
+          if (r.detected && r.overall !== "ready") next[r.client_id] = true;
+        }
+        selected = next;
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -94,6 +126,48 @@
   onMount(() => {
     void loadVerification();
   });
+
+  async function installSelected() {
+    if (bulkInstalling || !onRepair) return;
+    const ids = Object.entries(selected)
+      .filter(([, v]) => v)
+      .map(([id]) => id);
+    if (ids.length === 0) {
+      // Nothing selected — flip straight to verify so the user sees
+      // the existing state and can opt in manually if they change
+      // their mind.
+      submitted = true;
+      return;
+    }
+    bulkInstalling = true;
+    try {
+      // Run installs sequentially. The CLI is fine with parallel
+      // calls but writes to overlapping config files (per-user
+      // mcp.json) and we'd rather not race. Three or four in a row
+      // is sub-second anyway.
+      for (const id of ids) {
+        try {
+          await onRepair(id);
+        } catch (err) {
+          showToast(
+            err instanceof Error
+              ? `${id}: ${err.message}`
+              : `${id}: install failed`,
+            "attention",
+            4000,
+          );
+        }
+      }
+      await loadVerification();
+      submitted = true;
+    } finally {
+      bulkInstalling = false;
+    }
+  }
+
+  function selectedCount(): number {
+    return Object.values(selected).filter(Boolean).length;
+  }
 
   const detectedRows = $derived(
     results.filter((r) => r.detected),
@@ -196,10 +270,14 @@
 
 <section class="verify" aria-labelledby="verify-heading">
   <V1Kicker text="Agent integration" color="var(--vd-fg-3)" />
-  <h3 id="verify-heading" class="title">How deeply Vaner is wired into each agent</h3>
+  <h3 id="verify-heading" class="title">
+    {view === "select" ? "Wire Vaner into your agents" : "How deeply Vaner is wired into each agent"}
+  </h3>
   <V1Body
     muted
-    text="Vaner installs in up to four layers per client (see docs.vaner.ai/integrations/client-capabilities). MCP wiring alone often isn't enough — the agent needs the primer to know when to call Vaner."
+    text={view === "select"
+      ? "Pick the agents you want Vaner to talk to. Each install drops MCP wiring + a primer so the agent actually calls vaner.* tools."
+      : "Vaner installs in up to four layers per client (see docs.vaner.ai/integrations/client-capabilities). MCP wiring alone often isn't enough — the agent needs the primer to know when to call Vaner."}
   />
 
   {#if loading}
@@ -213,6 +291,50 @@
       into Claude Code, Cursor, Zed, VS Code, Codex CLI, Cline, Continue,
       Windsurf, Roo Code, or Claude Desktop later via <code>vaner clients install</code>.
     </p>
+  {:else if view === "select"}
+    <ul class="rows pick" role="list">
+      {#each detectedRows as r (r.client_id)}
+        {@const alreadyWired = r.overall === "ready"}
+        <li class="row pick-row" data-status={r.overall}>
+          <label class="pick-label">
+            {#if alreadyWired}
+              <span class="check-stub" aria-hidden="true">✓</span>
+            {:else}
+              <input
+                type="checkbox"
+                checked={selected[r.client_id] === true}
+                onchange={(e) => {
+                  selected = {
+                    ...selected,
+                    [r.client_id]: (e.currentTarget as HTMLInputElement).checked,
+                  };
+                }}
+              />
+            {/if}
+            <span class="pick-text">
+              <span class="row-label">{r.label}</span>
+              <span class="pick-state" style="color: {alreadyWired ? 'var(--vd-st-on)' : 'var(--vd-fg-3)'};">
+                {alreadyWired ? "Already wired" : "Will install MCP + primer"}
+              </span>
+            </span>
+          </label>
+        </li>
+      {/each}
+    </ul>
+
+    <div class="bulk-actions">
+      <V1PrimaryButton
+        title={bulkInstalling
+          ? "Wiring…"
+          : selectedCount() === 0
+            ? "Skip — leave agents alone"
+            : selectedCount() === 1
+              ? "Install Vaner into 1 agent"
+              : `Install Vaner into ${selectedCount()} agents`}
+        tint="var(--vd-amber)"
+        onclick={() => void installSelected()}
+      />
+    </div>
   {:else}
     <ul class="rows" role="list">
       {#each detectedRows as r (r.client_id)}
@@ -346,6 +468,52 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+  .pick-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 0;
+    padding: 0;
+    background: var(--vd-bg-2, #1d1d22);
+  }
+  .pick-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    cursor: pointer;
+  }
+  .pick-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--vd-amber, #e6b656);
+    flex: 0 0 auto;
+    cursor: pointer;
+  }
+  .pick-label .check-stub {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--vd-st-on, #6cc76c);
+    font-size: 13px;
+    flex: 0 0 auto;
+  }
+  .pick-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .pick-state {
+    font-size: 11px;
+  }
+  .bulk-actions {
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
   }
   .row {
     display: flex;
