@@ -463,6 +463,126 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: false
 
+      # ----- third-party catalogue updates ------------------------------
+      # Each tagged release auto-PRs the new version into the catalogues
+      # users install through. The catalogues need write access to push
+      # to a fork of the upstream repo, so each step pulls a separate
+      # token from secrets:
+      #   WINGET_TOKEN     — PAT with `public_repo` scope on a fork of
+      #                      microsoft/winget-pkgs under your account
+      #   HOMEBREW_TAP_TOKEN — PAT with `repo` scope on
+      #                        Borgels/homebrew-vaner
+      # Both steps are fail-soft (`continue-on-error`) so a missing
+      # secret on a green release isn't a regression — we'd rather
+      # publish the GitHub release and let the user PR the catalogue
+      # bump by hand than fail the whole pipeline.
+      - name: setup wingetcreate (Windows runner not required for this step)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          # wingetcreate ships as a self-contained .NET tool; install via
+          # `dotnet tool install -g` so it works on the linux runner the
+          # release job already uses.
+          if ! command -v wingetcreate >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends dotnet-sdk-8.0
+            dotnet tool install --global Microsoft.WindowsPackageManager.WingetCreate
+            echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+          fi
+        continue-on-error: true
+
+      - name: PR Vaner.Desktop manifest update to microsoft/winget-pkgs
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${WINGET_TOKEN:-}" ]]; then
+            echo "::warning::WINGET_TOKEN secret is not set; skipping winget-pkgs auto-PR."
+            echo "Set up a fork of microsoft/winget-pkgs under your account and store a PAT (public_repo scope) as WINGET_TOKEN to enable."
+            exit 0
+          fi
+          version="${TAG#v}"
+          exe_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/vaner-desktop_${version}_x64-setup.exe"
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          # `wingetcreate update` reads the existing manifest from the
+          # upstream catalogue, edits version + URL + computes the
+          # SHA256, and pushes the PR through the user's fork. `--submit`
+          # opens the PR; the bot validation runs the same suite the
+          # initial 0.2.4 PR went through.
+          wingetcreate update Vaner.Desktop \
+            --urls "$exe_url" \
+            --version "$version" \
+            --token "$WINGET_TOKEN" \
+            --submit
+        continue-on-error: true
+
+      - name: bump Homebrew Cask in Borgels/homebrew-vaner
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${HOMEBREW_TAP_TOKEN:-}" ]]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN secret is not set; skipping homebrew-vaner cask bump."
+            echo "Create a fine-grained PAT with 'Contents: Read & Write' on Borgels/homebrew-vaner and store as HOMEBREW_TAP_TOKEN."
+            exit 0
+          fi
+          version="${TAG#v}"
+          dmg_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/vaner-desktop_${version}_universal.dmg"
+          # Pull the .dmg sha256 from the staged bundle (sign-artifacts.sh
+          # left a SHA256SUMS we can grep). Fall back to computing it on
+          # the fly if needed.
+          dmg_path="${{ steps.stage.outputs.bundle_root }}/dmg/vaner-desktop_${version}_universal.dmg"
+          if [[ ! -f "$dmg_path" ]]; then
+            echo "::warning::no .dmg at $dmg_path; the macOS build presumably skipped or renamed. Skipping cask bump."
+            exit 0
+          fi
+          dmg_sha=$(sha256sum "$dmg_path" | awk '{print $1}')
+          tap_dir="$RUNNER_TEMP/homebrew-vaner"
+          rm -rf "$tap_dir"
+          git clone --depth 1 \
+            "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/Borgels/homebrew-vaner.git" "$tap_dir"
+          cask="$tap_dir/Casks/vaner-desktop.rb"
+          # Switch the cask to source from this repo's release artifacts
+          # and update version + sha256. The `verified:` prefix follows
+          # Homebrew's URL-spoofing-defence convention; we point it at
+          # this repo since Tauri-built .dmgs now live here.
+          python3 - <<PY
+          from pathlib import Path
+          import re
+          p = Path("$cask")
+          text = p.read_text()
+          text = re.sub(r'version "[^"]+"',  'version "$version"',  text, count=1)
+          text = re.sub(r'sha256 "[^"]+"',   'sha256 "$dmg_sha"',   text, count=1)
+          # Switch URL + verified prefix to this repo when first .dmg ships.
+          text = re.sub(
+              r'url "https://github\.com/[^"]+",\s*\n\s*verified: "[^"]+"',
+              ('url "https://github.com/${GITHUB_REPOSITORY}/releases/download/'
+               'v#{version}/vaner-desktop_#{version}_universal.dmg",\n'
+               '      verified: "github.com/${GITHUB_REPOSITORY}/"'),
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          p.write_text(text)
+          PY
+          cd "$tap_dir"
+          git config user.email "6937877+abolsen@users.noreply.github.com"
+          git config user.name "vaner-release-bot"
+          git add Casks/vaner-desktop.rb
+          if git diff --cached --quiet; then
+            echo "no cask changes; nothing to push"
+            exit 0
+          fi
+          git commit -m "vaner-desktop ${version}
+
+          Auto-bumped by Borgels/vaner-desktop release.yml on tag push."
+          git push origin HEAD:main
+        continue-on-error: true
+
       # ----- apt repo publish (gh-pages) — Linux .deb only --------------
       - name: checkout gh-pages
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
