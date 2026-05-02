@@ -21,6 +21,13 @@
   import { setup, loadStatus, loadHardware, loadPolicy } from "$lib/stores/setup.js";
   import { silentHours } from "$lib/stores/silent-hours.js";
   import { showToast } from "$lib/stores/toast.js";
+  import {
+    engineService,
+    installEngineService,
+    loadEngineServiceStatus,
+    uninstallEngineService,
+    type ServiceState,
+  } from "$lib/stores/engine-service.js";
 
   // Silent-hours window — From / To, weekdays-only. Persisted to
   // localStorage for v0.2.2 alongside the simple `silentHours` toggle
@@ -85,10 +92,56 @@
     showToast("Memory cleared on UI; daemon-side wipe pending v0.2.3.", "info", 3500);
   }
 
+  let serviceBusy = $state(false);
+  function describeServiceState(state: ServiceState | undefined): string {
+    switch (state) {
+      case "active":
+        return "Running in the background. Survives desktop close + login restart.";
+      case "enabled":
+        return "Enabled but not currently running. systemd will start it on next login.";
+      case "disabled":
+        return "Unit installed but disabled. Toggle on to bring it up.";
+      case "missing":
+        return "Not installed. Toggle on to install + enable + start the unit.";
+      case "unavailable":
+        return "systemctl --user is unavailable on this session — enable Linger or use the auto-start fallback while the desktop is open.";
+      default:
+        return "Checking…";
+    }
+  }
+  async function onServiceToggleClick(target: boolean) {
+    if (serviceBusy) return;
+    serviceBusy = true;
+    try {
+      if (target) {
+        const status = await installEngineService();
+        showToast(
+          status.state === "active" ? "Background engine service started." : "Background engine service installed.",
+          "success",
+          3500,
+        );
+      } else {
+        await uninstallEngineService();
+        showToast("Background engine service stopped + removed.", "success", 3000);
+      }
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : `Service action failed: ${err}`,
+        "attention",
+        5000,
+      );
+      // Re-sync from disk in case install partially succeeded.
+      await loadEngineServiceStatus();
+    } finally {
+      serviceBusy = false;
+    }
+  }
+
   onMount(() => {
     loadStatus();
     loadHardware();
     loadPolicy();
+    loadEngineServiceStatus();
   });
 
   const bundle = $derived($setup.bundle);
@@ -162,6 +215,27 @@
       <span class="row-detail">Drops an XDG autostart entry under <code>~/.config/autostart/</code> on toggle. Daemon-side wiring lands in v0.2.3.</span>
     </span>
   </label>
+
+  {#if $engineService}
+    {@const svc = $engineService}
+    {@const checked = svc.state === "active" || svc.state === "enabled"}
+    {@const disabled = serviceBusy || svc.state === "unavailable"}
+    <label class="row" class:dim={disabled}>
+      <input
+        type="checkbox"
+        {checked}
+        {disabled}
+        onchange={(e) => onServiceToggleClick((e.currentTarget as HTMLInputElement).checked)}
+      />
+      <span class="row-text">
+        <span class="row-title">Run engine in the background (systemd)</span>
+        <span class="row-detail">{describeServiceState(svc.state)}</span>
+        {#if svc.workspace && svc.state !== "missing" && svc.state !== "unavailable"}
+          <span class="row-detail">Targeting <code>{svc.workspace}</code> · unit at <code>{svc.unit_path}</code>.</span>
+        {/if}
+      </span>
+    </label>
+  {/if}
 </div>
 
 <!-- Memory -->
