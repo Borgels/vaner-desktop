@@ -1,17 +1,17 @@
 Package: vaner-desktop
-Version: 0.2.3
+Version: 0.2.4
 Architecture: amd64
-Installed-Size: 19624
+Installed-Size: 23239
 Maintainer: Borgels <maintainer@borgels.com>
 Homepage: https://vaner.ai
 Depends: libwebkit2gtk-4.1-0, libgtk-3-0, libayatana-appindicator3-1 | libappindicator3-1, libayatana-appindicator3-1, libwebkit2gtk-4.1-0, libgtk-3-0
 Priority: optional
 Section: devel
-Filename: pool/main/v/vaner-desktop/vaner-desktop_0.2.3_amd64.deb
-Size: 6806494
-SHA256: 98c62340aa2cde5b0e21f1143d791cc062a7217959b81b8b04e10c4610a55c81
-SHA1: 329d92f873e359e62604f17addb71d9d5b4348d9
-MD5sum: b84d6f7f62fbe09b52afcb0a360191df
+Filename: pool/main/v/vaner-desktop/vaner-desktop_0.2.4_amd64.deb
+Size: 8009202
+SHA256: e6d368f81e8f79b9aa7afc5d727664b4c85eee7f11bdf16ed9f7267f09b6d77f
+SHA1: 45d6469d5d9eb2c1dca20b0a6ca7275530994642
+MD5sum: a70b01b342c843804b3c08b7ee83e221
 Description: Companion for the Vaner predictive-context engine
  Menu-bar / tray desktop companion for the Vaner daemon. Watches in-flight predictions over SSE and adopts prepared packages into your running AI agent.
 
