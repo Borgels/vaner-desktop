@@ -10,6 +10,7 @@
   import { startPredictionStream } from "$lib/stores/predictions.js";
   import { vanerState } from "$lib/stores/vaner-state.js";
   import NotWiredToAnyClient from "$lib/components/popover-states/NotWiredToAnyClient.svelte";
+  import OllamaMissing from "$lib/components/popover-states/OllamaMissing.svelte";
   import EngineMissing from "$lib/components/popover-states/EngineMissing.svelte";
   import NotInstalled from "$lib/components/popover-states/NotInstalled.svelte";
   import InstalledNotConnected from "$lib/components/popover-states/InstalledNotConnected.svelte";
@@ -46,6 +47,8 @@
 
   {#if $vanerState.kind === "notWiredToAnyClient"}
     <NotWiredToAnyClient detected={$vanerState.detected} />
+  {:else if $vanerState.kind === "ollamaMissing"}
+    <OllamaMissing installed={$vanerState.installed} detail={$vanerState.detail} />
   {:else if $vanerState.kind === "engineMissing"}
     <EngineMissing install={$vanerState.install} />
   {:else if $vanerState.kind === "notInstalled"}

@@ -36,6 +36,12 @@ export interface ReducerInputs {
    *  the detector hasn't run yet (or failed), and we don't gate on
    *  it — falling through to whichever engine state is real. */
   clientDetect: ClientDetectStatus;
+  /** Ollama presence + reachability. Vaner's local-first default
+   *  backend is Ollama on `127.0.0.1:11434`; if it isn't installed
+   *  the model loop 502s on every MCP call. Routed before the
+   *  engine-error branch so the user sees the *cause* ("install
+   *  Ollama") rather than the *symptom* ("engine isn't responding"). */
+  ollamaHealth: { installed: boolean; running: boolean; detail: string };
   /** 0.8.0 prediction-centric pondering. Defaults to [] for callers
    *  that haven't been updated to the new shape. */
   activePredictions: PredictedPrompt[];
@@ -76,7 +82,22 @@ export function reduce(i: ReducerInputs): VanerState {
     return { kind: "notWiredToAnyClient", detected: i.clientDetect };
   }
 
-  // 1c. Clients are wired but the engine isn't reachable. Now it's
+  // 1c. Local-first prerequisite: Ollama. Vaner's default backend
+  //     points at `127.0.0.1:11434`; if Ollama isn't installed (or
+  //     isn't running), the model loop 502s on every MCP call and
+  //     the user sees a "engine unreachable" toast that doesn't
+  //     name the actual cause. Surface `.ollamaMissing` before the
+  //     engine-state branches so the user gets the *cause* rather
+  //     than the *symptom*.
+  if (!i.ollamaHealth.installed) {
+    return {
+      kind: "ollamaMissing",
+      installed: false,
+      detail: i.ollamaHealth.detail,
+    };
+  }
+
+  // 1d. Clients are wired but the engine isn't reachable. Now it's
   //     a real error — the user expects Vaner to be live somewhere
   //     and the cockpit is silent. Overrides pause; this is
   //     actionable.

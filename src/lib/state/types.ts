@@ -172,6 +172,7 @@ export type VanerState =
   | { kind: "engineMissing"; install: InstallFlowState }
   | { kind: "notInstalled" }
   | { kind: "notWiredToAnyClient"; detected: ClientDetectStatus }
+  | { kind: "ollamaMissing"; installed: boolean; detail: string }
   | { kind: "installedNotConnected" }
   | { kind: "learning"; progress: LearningProgress }
   | { kind: "watching"; summary: WatchingSummary; silentHours: boolean }

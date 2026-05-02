@@ -57,6 +57,10 @@ const baseInputs = (override: Partial<ReducerInputs> = {}): ReducerInputs => ({
   preparedWork: [],
   noAgentSuggestions: [],
   paused: false,
+  // Ollama is the local-first default backend. Default to "installed
+  // and running" so unrelated branches don't trip into
+  // `.ollamaMissing`; the dedicated tests below override.
+  ollamaHealth: { installed: true, running: true, detail: "" },
   ...override,
 });
 
@@ -175,6 +179,45 @@ describe("StateReducer precedence chain", () => {
 
   it("engine unreachable with default (wired) inputs → .error", () => {
     const out = reduce(baseInputs({ status: reachableStatus({ reachable: false }) }));
+    expect(out.kind).toBe("error");
+  });
+
+  it("Ollama not installed → .ollamaMissing (overrides engine error)", () => {
+    // Wired clients + engine unreachable would normally → .error;
+    // .ollamaMissing should win because it names the actual cause.
+    const out = reduce(
+      baseInputs({
+        status: reachableStatus({ reachable: false }),
+        ollamaHealth: { installed: false, running: false, detail: "Ollama isn't installed." },
+      }),
+    );
+    expect(out.kind).toBe("ollamaMissing");
+    if (out.kind === "ollamaMissing") {
+      expect(out.installed).toBe(false);
+      expect(out.detail).toContain("Ollama");
+    }
+  });
+
+  it("Ollama present but cliMissing wins → .notInstalled", () => {
+    // The Vaner CLI itself missing is a more fundamental problem
+    // than Ollama being absent — keep .notInstalled at the top of
+    // the precedence chain.
+    const out = reduce(
+      baseInputs({
+        status: reachableStatus({ cliMissing: true, reachable: false }),
+        ollamaHealth: { installed: false, running: false, detail: "" },
+      }),
+    );
+    expect(out.kind).toBe("notInstalled");
+  });
+
+  it("Ollama installed but the cockpit is silent → .error (engine, not Ollama)", () => {
+    const out = reduce(
+      baseInputs({
+        status: reachableStatus({ reachable: false }),
+        ollamaHealth: { installed: true, running: true, detail: "" },
+      }),
+    );
     expect(out.kind).toBe("error");
   });
 

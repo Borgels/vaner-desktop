@@ -34,6 +34,7 @@ pub mod engine_config;
 pub mod engine_service;
 pub mod engine_status_task;
 pub mod ollama;
+pub mod ollama_health_task;
 pub mod onboarding;
 pub mod popover;
 pub mod prepared_work_endpoint;
@@ -103,6 +104,7 @@ pub fn run() {
     let state = AppState::default();
     let engine = state.engine.clone();
     let engine_status_cache = Arc::new(engine_status_task::EngineStatusCache::new());
+    let ollama_health_cache = Arc::new(ollama_health_task::OllamaHealthCache::new());
 
     tauri::Builder::default()
         // Single-instance must be registered first so the dbus
@@ -121,6 +123,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .manage(engine_status_cache.clone())
+        .manage(ollama_health_cache.clone())
         .setup(move |app| {
             // Production-readiness: the desktop does NOT start a
             // daemon, adopt a workspace, or watch any repo unless
@@ -170,6 +173,14 @@ pub fn run() {
             // changes. Every webview reads through this cache —
             // popover and companion can no longer drift.
             engine_status_task::spawn(app.handle().clone(), engine_status_cache.clone());
+
+            // Same single-source pattern for Ollama presence.
+            // Vaner's local-first default backend is Ollama on
+            // localhost:11434; if it isn't installed (or isn't
+            // running) the model loop 502s on every MCP call. The
+            // popover routes to `.ollamaMissing` until the daemon
+            // probe answers.
+            ollama_health_task::spawn(app.handle().clone(), ollama_health_cache.clone());
 
             // Kick off the SSE snapshot stream; the Svelte store
             // listens on `predictions:snapshot`.
@@ -249,6 +260,8 @@ pub fn run() {
             engine_status_task::engine_status_boost,
             agent_detector::detect_agents,
             ollama::ollama_list,
+            ollama_health_task::ollama_health,
+            ollama_health_task::install_ollama,
             ollama::ollama_pull,
             ollama::ollama_cancel_pull,
             ollama::ollama_remove,

@@ -18,6 +18,10 @@
     startAgentDetectorPolling,
     stopAgentDetectorPolling,
   } from "$lib/stores/agent-detector.js";
+  import {
+    startOllamaHealthListener,
+    stopOllamaHealthListener,
+  } from "$lib/stores/ollama-health.js";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { showToast } from "$lib/stores/toast.js";
 
@@ -69,6 +73,7 @@
     // these returning errors (the stores keep their last value).
     startEngineStatusPolling();
     startAgentDetectorPolling();
+    void startOllamaHealthListener();
 
     // Probe MCP-client integrations. The reducer routes the popover
     // to .notWiredToAnyClient when zero clients have Vaner registered,
@@ -111,6 +116,7 @@
   onDestroy(() => {
     stopEngineStatusPolling();
     stopAgentDetectorPolling();
+    stopOllamaHealthListener();
     bringUpUnlisten?.();
     void disposeDaemonAudit();
   });

@@ -12,6 +12,7 @@ import { isPaused } from "./app-state.js";
 import { blockedSources } from "./blocked-sources.js";
 import { clientDetectStatus } from "./clients.js";
 import { engineStatus } from "./engine-status.js";
+import { ollamaHealth } from "./ollama-health.js";
 import { predictions } from "./predictions.js";
 import { prepared } from "./prepared.js";
 import { preparedWork } from "./prepared-work.js";
@@ -28,8 +29,9 @@ export const vanerState: Readable<VanerState> = derived(
     silentHours,
     isPaused,
     clientDetectStatus,
+    ollamaHealth,
   ],
-  ([$preds, $work, $status, $prep, $blocked, $agents, $silent, $paused, $clientDetect]) => {
+  ([$preds, $work, $status, $prep, $blocked, $agents, $silent, $paused, $clientDetect, $ollama]) => {
     const hasAnySource = $status.sourcesCount > 0;
     const inputs: ReducerInputs = {
       status: $status,
@@ -43,6 +45,7 @@ export const vanerState: Readable<VanerState> = derived(
       preparedWork: $work,
       noAgentSuggestions: $agents.suggestions,
       paused: $paused,
+      ollamaHealth: $ollama,
     };
     return reduce(inputs);
   },

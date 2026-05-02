@@ -20,6 +20,10 @@
     startEngineStatusPolling,
     stopEngineStatusPolling,
   } from "$lib/stores/engine-status.js";
+  import {
+    startOllamaHealthListener,
+    stopOllamaHealthListener,
+  } from "$lib/stores/ollama-health.js";
 
   let { children } = $props();
 
@@ -59,6 +63,7 @@
     // the popover about whether the engine is up. Same store, same
     // command, just one poller per window.
     startEngineStatusPolling();
+    void startOllamaHealthListener();
     // The Rust side fires `companion:navigate` when the user reopens
     // the window from the tray with a different requested pane. Sync
     // our query string when that happens.
@@ -70,6 +75,7 @@
   onDestroy(() => {
     unlisten?.();
     stopEngineStatusPolling();
+    stopOllamaHealthListener();
   });
 
   const showTimeline = $derived(tabs.find((t) => t.id === active)?.showsTimeline ?? false);

@@ -19,10 +19,12 @@
   import Idle from "$lib/components/popover-states/Idle.svelte";
   import Paused from "$lib/components/popover-states/Paused.svelte";
   import NotWiredToAnyClient from "$lib/components/popover-states/NotWiredToAnyClient.svelte";
+  import OllamaMissing from "$lib/components/popover-states/OllamaMissing.svelte";
   import type { PreparedMoment, SourceRef } from "$lib/state/types.js";
 
   const STATES = [
     "notWiredToAnyClient",
+    "ollamaMissing",
     "engineMissing",
     "notInstalled",
     "installedNotConnected",
@@ -118,6 +120,8 @@
         <NotWiredToAnyClient
           detected={{ total: 4, wiredCount: 0, wiredLabels: [] }}
         />
+      {:else if kind === "ollamaMissing"}
+        <OllamaMissing installed={false} detail="Ollama isn't installed." />
       {:else if kind === "engineMissing"}
         <EngineMissing install={{ kind: "notDetected" }} />
       {:else if kind === "notInstalled"}
