@@ -57,9 +57,10 @@ gpg_sign() {
 mapfile -t debs      < <(find "$bundle_dir" -maxdepth 3 -type f -name "*.deb"      | sort)
 mapfile -t appimages < <(find "$bundle_dir" -maxdepth 3 -type f -name "*.AppImage" | sort)
 mapfile -t exes      < <(find "$bundle_dir" -maxdepth 3 -type f -name "*-setup.exe" | sort)
+mapfile -t dmgs      < <(find "$bundle_dir" -maxdepth 3 -type f -name "*.dmg"      | sort)
 
-if ((${#debs[@]} + ${#appimages[@]} + ${#exes[@]} == 0)); then
-  echo "ERROR: no .deb, .AppImage, or .exe bundles found under $bundle_dir" >&2
+if ((${#debs[@]} + ${#appimages[@]} + ${#exes[@]} + ${#dmgs[@]} == 0)); then
+  echo "ERROR: no .deb, .AppImage, .exe, or .dmg bundles found under $bundle_dir" >&2
   exit 4
 fi
 
@@ -86,12 +87,18 @@ for e in "${exes[@]}"; do
   gpg_sign "$e"
 done
 
+for dmg in "${dmgs[@]}"; do
+  echo "→ signing macOS .dmg (detached GPG): $dmg"
+  gpg_sign "$dmg"
+done
+
 # Single consolidated SHA256SUMS at the bundle-dir root, signed.
 sums_path="$bundle_dir/SHA256SUMS"
 {
   for d in "${debs[@]}";      do (cd "$(dirname "$d")" && sha256sum "$(basename "$d")" "$(basename "$d").asc"); done
   for a in "${appimages[@]}"; do (cd "$(dirname "$a")" && sha256sum "$(basename "$a")" "$(basename "$a").asc"); done
   for e in "${exes[@]}";      do (cd "$(dirname "$e")" && sha256sum "$(basename "$e")" "$(basename "$e").asc"); done
+  for dmg in "${dmgs[@]}";    do (cd "$(dirname "$dmg")" && sha256sum "$(basename "$dmg")" "$(basename "$dmg").asc"); done
 } > "$sums_path"
 
 gpg --batch --pinentry-mode loopback \
@@ -104,4 +111,5 @@ echo "signed artifacts:"
 for d in "${debs[@]}";      do ls -la "$d" "$d.asc"; done
 for a in "${appimages[@]}"; do ls -la "$a" "$a.asc"; done
 for e in "${exes[@]}";      do ls -la "$e" "$e.asc"; done
+for dmg in "${dmgs[@]}";    do ls -la "$dmg" "$dmg.asc"; done
 ls -la "$sums_path" "$sums_path.asc"
