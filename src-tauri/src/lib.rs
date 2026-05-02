@@ -130,6 +130,8 @@ pub fn run() {
             commands::app_quit,
             commands::window_hide,
             updater::install_update,
+            updater::update_install_kind,
+            updater::update_open_release,
             popover::popover_toggle_pinned,
             popover::popover_is_pinned,
             diagnostics::diagnostics_status,
