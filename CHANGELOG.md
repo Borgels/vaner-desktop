@@ -7,6 +7,12 @@
 - **macOS .dmg in the release workflow** — `build-macos` job (macos-14, Apple Silicon runner, `tauri build --bundles dmg --target universal-apple-darwin`) produces a universal-2 .dmg that runs on both arm64 and x86_64 Macs. Wired into the staging + signing + release-publish steps; SHA256SUMS covers the .dmg too. Tauri's auto-updater `latest.json` carries a `darwin-universal` block when a minisign sig is present (TAURI_SIGNING_PRIVATE_KEY set).
 - The macOS build runs unsigned by default — sets `APPLE_*` env vars from optional repo secrets so users can flip on Developer ID signing + notarization later without touching the workflow. Until those are set, the .dmg ships unsigned and users see "Apple cannot verify Vaner.app" on first launch (right-click → Open to bypass).
 - **Winget manifest triple** at `winget/manifests/v/Vaner/Desktop/0.2.4/` — version, installer, en-US locale. Pinned to the published sha256 of `vaner-desktop_0.2.4_x64-setup.exe`. PR target is `microsoft/winget-pkgs`.
+- **Auto-PR winget manifest on tag push** — `release.yml` installs `wingetcreate` and submits a manifest update to `microsoft/winget-pkgs` for every tagged release. Reads the new `.exe` URL straight from the just-published GitHub release. Fail-soft: missing `WINGET_TOKEN` secret prints a warning and skips the step instead of failing the release. Set up a fork of `microsoft/winget-pkgs` under your account and store a PAT (`public_repo` scope) as `WINGET_TOKEN`.
+- **Auto-bump Homebrew Cask on tag push** — `release.yml` clones `Borgels/homebrew-vaner`, rewrites `Casks/vaner-desktop.rb` with the new version + .dmg sha256, switches the URL to the just-published `Borgels/vaner-desktop` release, and pushes. Same fail-soft pattern: missing `HOMEBREW_TAP_TOKEN` secret skips the step. Set a fine-grained PAT with `Contents: Read & Write` on `Borgels/homebrew-vaner` as `HOMEBREW_TAP_TOKEN`.
+
+### Changed
+
+- Homebrew Cask source switches from `Borgels/vaner-desktop-macos` to `Borgels/vaner-desktop` (this repo) the first time the auto-bump runs against a release that includes a Tauri .dmg. After that, `vaner-desktop-macos` (the Swift app) can be sunset.
 
 ## [0.2.4] - 2026-05-02
 
