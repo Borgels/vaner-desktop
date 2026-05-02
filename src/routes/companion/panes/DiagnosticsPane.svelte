@@ -105,5 +105,8 @@
     color: var(--vd-fg-2);
     font-size: 11px;
     white-space: pre-wrap;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
   }
 </style>
