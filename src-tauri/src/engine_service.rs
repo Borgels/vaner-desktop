@@ -189,12 +189,16 @@ pub async fn engine_service_status() -> Result<ServiceStatus, String> {
         });
     }
 
-    let (_, is_active, _) = systemctl_user(&["is-active", UNIT_NAME])
-        .await
-        .unwrap_or((false, "inactive".to_string(), String::new()));
-    let (_, is_enabled, _) = systemctl_user(&["is-enabled", UNIT_NAME])
-        .await
-        .unwrap_or((false, "disabled".to_string(), String::new()));
+    let (_, is_active, _) = systemctl_user(&["is-active", UNIT_NAME]).await.unwrap_or((
+        false,
+        "inactive".to_string(),
+        String::new(),
+    ));
+    let (_, is_enabled, _) = systemctl_user(&["is-enabled", UNIT_NAME]).await.unwrap_or((
+        false,
+        "disabled".to_string(),
+        String::new(),
+    ));
 
     let state = match (is_active.as_str(), is_enabled.as_str()) {
         ("active", _) => ServiceState::Active,
@@ -246,16 +250,20 @@ WantedBy=default.target\n",
 pub async fn engine_service_install() -> Result<ServiceStatus, String> {
     if !systemctl_available().await {
         return Err(
-            "systemctl --user is unavailable on this session; cannot install the engine service.".to_string(),
+            "systemctl --user is unavailable on this session; cannot install the engine service."
+                .to_string(),
         );
     }
-    let workspace = crate::workspace::resolve()
-        .ok_or_else(|| "Pick a workspace before enabling the background engine service.".to_string())?;
+    let workspace = crate::workspace::resolve().ok_or_else(|| {
+        "Pick a workspace before enabling the background engine service.".to_string()
+    })?;
     let workspace_str = workspace.to_string_lossy().into_owned();
     let bin = crate::vaner_cli::resolve_vaner_bin()?;
 
     let path = unit_path().ok_or_else(|| "could not resolve $HOME".to_string())?;
-    let dir = path.parent().ok_or_else(|| "unit path has no parent".to_string())?;
+    let dir = path
+        .parent()
+        .ok_or_else(|| "unit path has no parent".to_string())?;
     std::fs::create_dir_all(dir).map_err(|e| format!("create unit dir: {e}"))?;
 
     let body = render_unit(&bin, &workspace_str);
@@ -290,8 +298,7 @@ pub async fn engine_service_uninstall() -> Result<ServiceStatus, String> {
         let _ = systemctl_user(&["disable", "--now", UNIT_NAME]).await;
     }
     if let Err(e) = std::fs::remove_file(&path) {
-        return Err(format!("remove unit: {e}"))
-            .map_err(|e: String| format!("uninstall: {e}"));
+        return Err(format!("remove unit: {e}")).map_err(|e: String| format!("uninstall: {e}"));
     }
     if systemctl_available().await {
         let _ = systemctl_user(&["daemon-reload"]).await;
@@ -320,20 +327,26 @@ pub async fn engine_service_set_linger(enable: bool) -> Result<ServiceStatus, St
     }
 
     if which::which("loginctl").is_err() {
-        return Err(
-            "loginctl is not installed; cannot toggle linger on this system.".to_string(),
-        );
+        return Err("loginctl is not installed; cannot toggle linger on this system.".to_string());
     }
     if which::which("pkexec").is_err() {
         return Err(format!(
             "pkexec is required to toggle linger but isn't installed.\n\
              Run this manually instead:\n  sudo loginctl {} {}",
-            if enable { "enable-linger" } else { "disable-linger" },
+            if enable {
+                "enable-linger"
+            } else {
+                "disable-linger"
+            },
             user
         ));
     }
 
-    let action = if enable { "enable-linger" } else { "disable-linger" };
+    let action = if enable {
+        "enable-linger"
+    } else {
+        "disable-linger"
+    };
     let output = Command::new("pkexec")
         .arg("loginctl")
         .arg(action)

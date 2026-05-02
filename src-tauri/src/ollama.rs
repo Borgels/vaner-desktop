@@ -37,8 +37,9 @@ const OLLAMA_BASE: &str = "http://127.0.0.1:11434";
 /// Process-wide handle to the in-flight pull task. Wrapped in an
 /// Arc<Mutex<>> so `ollama_cancel_pull` can abort whichever task is
 /// currently running, regardless of which window initiated it.
-static PULL_HANDLE: tokio::sync::OnceCell<Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>> =
-    tokio::sync::OnceCell::const_new();
+static PULL_HANDLE: tokio::sync::OnceCell<
+    Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
+> = tokio::sync::OnceCell::const_new();
 
 async fn pull_handle() -> Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>> {
     PULL_HANDLE

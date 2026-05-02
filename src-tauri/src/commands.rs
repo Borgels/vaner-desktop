@@ -144,7 +144,6 @@ fn human(err: EngineClientError) -> String {
     }
 }
 
-
 /// Open an arbitrary URL in the user’s default browser via `xdg-open`.
 /// Used by popover states and Preferences cards that link to external
 /// docs (`docs.vaner.ai/integrations/connect-your-client`, the

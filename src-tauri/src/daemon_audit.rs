@@ -23,7 +23,7 @@
 //!   - [`audit_strays`]   — return the current stray list.
 //!   - [`kill_strays`]    — SIGTERM the listed PIDs.
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use serde::Serialize;
 
@@ -74,8 +74,8 @@ fn classify(args: &[String]) -> Option<(String, Option<String>)> {
     let first = iter.next()?;
     let binary_looks_like_vaner = first.ends_with("/vaner")
         || first == "vaner"
-        || first.ends_with("/vaner-desktop") == false
-            && first.split('/').next_back().map(|s| s.starts_with("vaner")) == Some(true);
+        || (!first.ends_with("/vaner-desktop")
+            && first.split('/').next_back().map(|s| s.starts_with("vaner")) == Some(true));
     // The python wrapper uses `python /path/to/vaner …` — peek one
     // token deeper if the first looks like `python` and the next
     // ends with `/vaner`.
@@ -175,7 +175,7 @@ pub fn find_strays() -> Vec<StrayProcess> {
         // out-lived us, but the user already opted in to that
         // workspace, so killing them silently would be surprising).
         if let (Some(p), Some(w)) = (&path, &workspace_str) {
-            if PathBuf::from(p) == PathBuf::from(w) {
+            if Path::new(p) == Path::new(w) {
                 continue;
             }
         }
@@ -200,16 +200,26 @@ pub fn kill_strays(pids: Vec<i32>) -> Result<usize, String> {
     if pids.is_empty() {
         return Ok(0);
     }
-    // SIGTERM via libc::kill. Tauri's process API doesn't reach
-    // foreign PIDs, so we go direct.
-    let mut sent = 0usize;
-    for pid in pids {
-        // SAFETY: kill(2) is signal-safe; we own no shared mutable
-        // state that this could disturb.
-        let rc = unsafe { libc::kill(pid, libc::SIGTERM) };
-        if rc == 0 {
-            sent += 1;
+    // SIGTERM via libc::kill on Unix; Windows doesn't have signals
+    // (and the audit logic above is /proc-only anyway, so this code
+    // path can't fire on Windows in practice — but cargo check
+    // still wants the symbol resolvable).
+    #[cfg(unix)]
+    {
+        let mut sent = 0usize;
+        for pid in pids {
+            // SAFETY: kill(2) is signal-safe; we own no shared mutable
+            // state that this could disturb.
+            let rc = unsafe { libc::kill(pid, libc::SIGTERM) };
+            if rc == 0 {
+                sent += 1;
+            }
         }
+        Ok(sent)
     }
-    Ok(sent)
+    #[cfg(not(unix))]
+    {
+        let _ = pids;
+        Err("kill_strays is unix-only".to_string())
+    }
 }

@@ -25,7 +25,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::oneshot;
 
@@ -86,8 +86,7 @@ fn write_state(state: &DesktopState) -> Result<(), String> {
     };
     std::fs::create_dir_all(&dir).map_err(|e| format!("create config dir: {e}"))?;
     let path = dir.join(STATE_FILE);
-    let json =
-        serde_json::to_string_pretty(state).map_err(|e| format!("serialize state: {e}"))?;
+    let json = serde_json::to_string_pretty(state).map_err(|e| format!("serialize state: {e}"))?;
     // Atomic write: tmp + rename. On the off-chance state.json is being
     // read by another instance, the rename guarantees consistency.
     let tmp = path.with_extension("json.tmp");
@@ -187,7 +186,9 @@ pub async fn workspace_pick(app: AppHandle) -> Result<Option<String>, String> {
         let _ = tx.send(selected);
     });
     let selected = rx.await.map_err(|_| "dialog cancelled".to_string())?;
-    let Some(path) = selected else { return Ok(None) };
+    let Some(path) = selected else {
+        return Ok(None);
+    };
     let path_buf = path
         .into_path()
         .map_err(|e| format!("could not resolve picked path: {e}"))?;
@@ -254,8 +255,15 @@ pub async fn adopt_running_cockpit() {
     // confirm reachability — the workspace path comes from the
     // CLI's `vaner status --json` (which auto-discovers the running
     // workspace from the daemon's PID file when no --path is given).
-    let probe = format!("http://127.0.0.1:8473/openapi.json");
-    if client.get(&probe).send().await.ok().filter(|r| r.status().is_success()).is_none() {
+    let probe = "http://127.0.0.1:8473/openapi.json".to_string();
+    if client
+        .get(&probe)
+        .send()
+        .await
+        .ok()
+        .filter(|r| r.status().is_success())
+        .is_none()
+    {
         return;
     }
     let bin = match crate::vaner_cli::resolve_vaner_bin() {

@@ -74,12 +74,15 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     // the menu was built from.
     let pause_for_listener = pause_item.clone();
     app.listen("app:pause-changed", move |event| {
-        let payload: PauseChangedPayload =
-            match serde_json::from_str(event.payload()) {
-                Ok(p) => p,
-                Err(_) => return,
-            };
-        let label = if payload.paused { LABEL_RESUME } else { LABEL_PAUSE };
+        let payload: PauseChangedPayload = match serde_json::from_str(event.payload()) {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let label = if payload.paused {
+            LABEL_RESUME
+        } else {
+            LABEL_PAUSE
+        };
         let _ = pause_for_listener.set_text(label);
     });
 

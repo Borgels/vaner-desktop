@@ -49,6 +49,12 @@ pub struct OllamaHealthCache {
     notify: tokio::sync::Notify,
 }
 
+impl Default for OllamaHealthCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OllamaHealthCache {
     pub fn new() -> Self {
         Self {
@@ -157,9 +163,7 @@ pub async fn ollama_health(
 /// emulator that matches the user's machine is launched. After the
 /// command exits, the cache is poked so the popover flips immediately.
 #[tauri::command]
-pub async fn install_ollama(
-    cache: tauri::State<'_, Arc<OllamaHealthCache>>,
-) -> Result<(), String> {
+pub async fn install_ollama(cache: tauri::State<'_, Arc<OllamaHealthCache>>) -> Result<(), String> {
     let inner = "curl -fsSL https://ollama.com/install.sh | sh; \
                  echo; echo 'Ollama installer finished. Press Enter to close.'; \
                  read -r _";

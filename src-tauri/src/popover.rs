@@ -12,10 +12,15 @@
 //! it only becomes visible after the user clicks the tray icon or
 //! the "Open Vaner" menu item.
 
-use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{AppHandle, Manager, PhysicalPosition, Runtime};
+// `tauri_plugin_positioner` is only used on non-unix platforms; on
+// Linux we go straight to deterministic monitor-edge placement (see
+// the comment in [`show`]) and the imports would warn as unused.
+#[cfg(not(unix))]
+use std::panic::AssertUnwindSafe;
+#[cfg(not(unix))]
 use tauri_plugin_positioner::{Position, WindowExt};
 
 pub const WINDOW_LABEL: &str = "main";
@@ -93,9 +98,7 @@ pub fn show<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             let win_size = window
                 .outer_size()
                 .unwrap_or(tauri::PhysicalSize::new(420, 520));
-            let x = m_pos.x + m_size.width as i32
-                - win_size.width as i32
-                - FALLBACK_INSET_RIGHT_PX;
+            let x = m_pos.x + m_size.width as i32 - win_size.width as i32 - FALLBACK_INSET_RIGHT_PX;
             let y = m_pos.y + FALLBACK_INSET_TOP_PX;
             let _ = window.set_position(PhysicalPosition::new(x, y));
         }

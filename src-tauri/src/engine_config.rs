@@ -268,12 +268,9 @@ pub enum BackendPreset {
 impl BackendPreset {
     fn template(self) -> Option<(&'static str, &'static str, &'static str, &'static str)> {
         match self {
-            BackendPreset::Ollama => Some((
-                "openai",
-                "http://localhost:11434/v1",
-                "qwen3.5:8b",
-                "",
-            )),
+            BackendPreset::Ollama => {
+                Some(("openai", "http://localhost:11434/v1", "qwen3.5:8b", ""))
+            }
             BackendPreset::Openai => Some((
                 "openai",
                 "https://api.openai.com/v1",

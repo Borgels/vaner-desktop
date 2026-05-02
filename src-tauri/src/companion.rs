@@ -115,17 +115,18 @@ pub fn open_window<R: Runtime>(app: &AppHandle<R>, tab: Option<String>) -> tauri
 /// connected monitor. Without this, restoring `(x: 9000, y: 200)` from
 /// a session where the user had an external display would land the
 /// window off-screen on a laptop boot.
-fn safe_position<R: Runtime>(window: &tauri::WebviewWindow<R>, g: WindowGeometry) -> PhysicalPosition<i32> {
+fn safe_position<R: Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    g: WindowGeometry,
+) -> PhysicalPosition<i32> {
     let candidate = PhysicalPosition::new(g.x, g.y);
     // If any available monitor contains the candidate point, accept it.
     let monitors = window.available_monitors().unwrap_or_default();
     for m in &monitors {
         let pos = m.position();
         let size = m.size();
-        let in_x = candidate.x >= pos.x
-            && candidate.x < pos.x + size.width as i32;
-        let in_y = candidate.y >= pos.y
-            && candidate.y < pos.y + size.height as i32;
+        let in_x = candidate.x >= pos.x && candidate.x < pos.x + size.width as i32;
+        let in_y = candidate.y >= pos.y && candidate.y < pos.y + size.height as i32;
         if in_x && in_y {
             return candidate;
         }
@@ -134,9 +135,10 @@ fn safe_position<R: Runtime>(window: &tauri::WebviewWindow<R>, g: WindowGeometry
     if let Some(primary) = window.primary_monitor().ok().flatten() {
         let pos = primary.position();
         let size = primary.size();
-        let win_size = window
-            .outer_size()
-            .unwrap_or(PhysicalSize::new(DEFAULT_WIDTH as u32, DEFAULT_HEIGHT as u32));
+        let win_size = window.outer_size().unwrap_or(PhysicalSize::new(
+            DEFAULT_WIDTH as u32,
+            DEFAULT_HEIGHT as u32,
+        ));
         let x = pos.x + (size.width as i32 - win_size.width as i32) / 2;
         let y = pos.y + (size.height as i32 - win_size.height as i32) / 2;
         return PhysicalPosition::new(x, y);

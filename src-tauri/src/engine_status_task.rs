@@ -25,7 +25,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
-use crate::engine::{probe_engine_status, EngineStatusOut};
+use crate::engine::{EngineStatusOut, probe_engine_status};
 
 const BASE_INTERVAL: Duration = Duration::from_secs(5);
 const BOOST_INTERVAL: Duration = Duration::from_millis(500);
@@ -35,6 +35,12 @@ pub struct EngineStatusCache {
     snapshot: RwLock<EngineStatusOut>,
     boost_until: RwLock<Option<Instant>>,
     notify: tokio::sync::Notify,
+}
+
+impl Default for EngineStatusCache {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl EngineStatusCache {
@@ -87,7 +93,7 @@ pub fn spawn(app: AppHandle, cache: Arc<EngineStatusCache>) {
             let next = probe_engine_status().await;
             let changed = {
                 let mut guard = cache.snapshot.write().await;
-                let differs = !same(&*guard, &next);
+                let differs = !same(&guard, &next);
                 *guard = next.clone();
                 differs
             };
