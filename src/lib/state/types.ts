@@ -153,6 +153,7 @@ export interface WatchingSummary {
 // -----------------------------------------------------------------------------
 
 export type VanerState =
+  | { kind: "needsWorkspace" }
   | { kind: "engineMissing"; install: InstallFlowState }
   | { kind: "notInstalled" }
   | { kind: "installedNotConnected" }

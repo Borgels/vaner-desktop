@@ -6,6 +6,8 @@
   import { bootstrapAppStateListeners } from "$lib/stores/app-state.js";
   import { bootstrapUpdaterListeners } from "$lib/stores/updater.js";
   import { loadStatus } from "$lib/stores/setup.js";
+  import { loadWorkspace, workspacePath } from "$lib/stores/workspace.js";
+  import { get } from "svelte/store";
   import {
     setSourcesCount,
     startEngineStatusPolling,
@@ -29,17 +31,24 @@
     bootstrapAppStateListeners();
     bootstrapUpdaterListeners();
 
+    // Hydrate the workspace store before anything that shells the CLI.
+    // The reducer reads this synchronously to decide between
+    // .needsWorkspace and the rest of the chain; the engine-status
+    // poll downstream feeds `--path` from the same source.
+    await loadWorkspace();
+
     // Reducer-input polling. Both are idempotent; the popover survives
     // these returning errors (the stores keep their last value).
     startEngineStatusPolling();
     startAgentDetectorPolling();
 
     // First-run check: if no setup has completed, open the dedicated
-    // onboarding window. The popover keeps rendering its current state
-    // (engineMissing / installedNotConnected / etc.) while the user
-    // runs through onboarding in the second window. On completion the
-    // onboarding side calls close_onboarding and the layout never
-    // re-fires this branch.
+    // onboarding window. Gated on a workspace being picked — without
+    // one, `vaner setup show --path .` runs against the desktop's cwd
+    // (often /) and reports an empty [setup], firing onboarding on
+    // every launch. The .needsWorkspace popover state takes the user
+    // through the picker first.
+    if (!get(workspacePath)) return;
     try {
       const status = await loadStatus();
       const completedAt = status?.setup?.completed_at;

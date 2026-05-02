@@ -50,9 +50,12 @@ pub async fn engine_status() -> Result<EngineStatusOut, String> {
             });
         }
     };
+    let workspace = crate::workspace::resolve_str();
     let output = Command::new(&bin)
         .arg("status")
         .arg("--json")
+        .arg("--path")
+        .arg(&workspace)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()

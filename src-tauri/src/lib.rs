@@ -37,6 +37,7 @@ pub mod sse_task;
 pub mod tray;
 pub mod updater;
 pub mod vaner_cli;
+pub mod workspace;
 
 /// Process-wide state. A single reqwest-backed HTTP client is shared
 /// across every `#[tauri::command]` so connection pooling works.
@@ -69,6 +70,13 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .setup(move |app| {
+            // Resolve the user's persisted workspace and export it as
+            // VANER_PATH so any helper that hasn't been migrated to
+            // crate::workspace::resolve* yet still sees a stable path.
+            // No-op when the user hasn't picked one yet — the popover
+            // surfaces the picker rather than firing onboarding.
+            workspace::export_to_env(app.handle());
+
             // Kick off the SSE snapshot stream; the Svelte store
             // listens on `predictions:snapshot`.
             let handle = sse_task::spawn(app.handle().clone(), engine.clone());
@@ -142,6 +150,9 @@ pub fn run() {
             onboarding::close_onboarding,
             engine::engine_status,
             agent_detector::detect_agents,
+            workspace::workspace_get,
+            workspace::workspace_set,
+            workspace::workspace_pick,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
