@@ -58,6 +58,20 @@ pub fn show<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .ok_or(tauri::Error::WindowNotFound)?;
     window.show()?;
 
+    // Linux: skip `Position::TrayBottomCenter` entirely. The plugin
+    // panics on a separate thread (`zbus::Connection executor` →
+    // `Tray position not set` at ext.rs:301:17) on hosts where the
+    // SNI/AppIndicator panel hasn't reported the tray icon's
+    // geometry — and most Linux desktops don't. The panic is on a
+    // worker thread so it doesn't crash us, but it pollutes the
+    // user's terminal and isn't useful: the positioner ends up
+    // landing on (0,0) anyway, which the fallback below would
+    // overwrite. Going straight to the deterministic monitor-edge
+    // placement keeps stderr clean and gives a single predictable
+    // position the user can drag from.
+    #[cfg(unix)]
+    let tray_anchor_ok = false;
+    #[cfg(not(unix))]
     let tray_anchor_ok = std::panic::catch_unwind(AssertUnwindSafe(|| {
         window.move_window(Position::TrayBottomCenter).is_ok()
     }))
@@ -69,11 +83,10 @@ pub fn show<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .unwrap_or(true);
 
     if !tray_anchor_ok || bogus_position {
-        // SNI-tray fallback: top-right of the focused monitor with a
-        // small inset. `current_monitor` returns the monitor the
-        // window currently overlaps, which after `window.show()` is
-        // the user's primary monitor — not whichever happens to be
-        // index 0.
+        // Top-right of the focused monitor with a small inset.
+        // `current_monitor` returns the monitor the window currently
+        // overlaps, which after `window.show()` is the user's primary
+        // monitor — not whichever happens to be index 0.
         if let Ok(Some(monitor)) = window.current_monitor() {
             let m_size = monitor.size();
             let m_pos = monitor.position();

@@ -117,7 +117,10 @@
   let confirmClear = $state(false);
   async function exportMemory() {
     try {
-      await invoke("open_external_url", { url: "https://vaner.ai/docs/memory" });
+      // No /docs/memory page exists yet; the privacy page is the
+      // closest doc that explains where data lives until the
+      // daemon ships an export endpoint.
+      await invoke("open_external_url", { url: "https://vaner.ai/privacy" });
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), "attention", 3500);
     }

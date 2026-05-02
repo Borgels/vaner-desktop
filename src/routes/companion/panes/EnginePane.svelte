@@ -241,10 +241,7 @@
     <DocsLink path="/docs/architecture" />
   </div>
   <V1Headline text="The local background process" size={22} />
-  <V1Body
-    muted
-    text="The Python daemon that watches your repo, generates artefacts, and answers MCP clients. Everything here runs on this machine."
-  />
+  <V1Body muted text="Runs on your machine. Answers your agents." />
 </header>
 
 <!-- Install & updates card -->
@@ -363,10 +360,7 @@
     <span class="rail" style="background: var(--vd-purple);"></span>
     <span>Runtime settings</span>
   </div>
-  <V1Body
-    muted
-    text="How aggressively Vaner runs the background loop. Pick the trade-off that fits how you use this machine."
-  />
+  <V1Body muted text="How hard Vaner works in the background." />
   {#if $computeConfig}
     <div class="presets">
       {#each PRESETS as preset (preset.id)}

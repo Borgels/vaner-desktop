@@ -104,18 +104,18 @@
 </script>
 
 {#if unconfigured}
-  <QuietShell markState="idle" stateLabel="Setup not finished">
-    <V1Headline text="Vaner isn't running yet." />
+  <QuietShell markState="idle" stateLabel="Idle">
+    <V1Headline text="Vaner is set up." />
     <V1Body
       muted
-      text="No workspace is set, so the engine isn't watching anything. Finish setup or open a wired agent in a repo and Vaner will start."
+      text="The engine starts when your first agent calls it. Open Cursor / Claude Code / Zed in a repo and Vaner kicks in."
     />
     <div class="actions">
-      <V1PrimaryButton title="Run setup" onclick={openSetup} />
+      <V1GhostButton title="Re-run setup" onclick={openSetup} />
       <V1GhostButton title="Diagnostics" onclick={openDiagnostics} />
     </div>
     {#snippet footer()}
-      <PopoverFooter health="idle" healthLabel="Idle — no workspace yet" />
+      <PopoverFooter health="idle" healthLabel="Idle — waiting for an agent" />
     {/snippet}
   </QuietShell>
 {:else}

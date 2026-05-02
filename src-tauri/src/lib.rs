@@ -96,10 +96,42 @@ fn strip_appimage_env() {
     }
 }
 
+/// Silence the `tauri-plugin-positioner` zbus-executor panic.
+///
+/// Background: `tauri-plugin-positioner` keeps a long-lived task on
+/// its zbus connection that handles tray-position updates. On Linux
+/// hosts where the SNI/AppIndicator panel never reports the icon's
+/// geometry (most of them, today), the task hits an
+/// `expect("Tray position not set")` at `ext.rs:301:17` and the
+/// worker thread dies. Rust's default panic handler prints a stack
+/// trace to stderr. The main process keeps running — it's noise, not
+/// a crash — but the noise lands in the user's terminal whenever they
+/// launch `vaner-desktop` from a shell, which is alarming.
+///
+/// We swallow the specific panic ("Tray position not set") at the
+/// hook level. Every other panic falls through to the prior handler
+/// so real bugs still surface.
+fn install_positioner_panic_silencer() {
+    let prior = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let msg = info
+            .payload()
+            .downcast_ref::<&'static str>()
+            .copied()
+            .or_else(|| info.payload().downcast_ref::<String>().map(|s| s.as_str()))
+            .unwrap_or("");
+        if msg.contains("Tray position not set") {
+            return;
+        }
+        prior(info);
+    }));
+}
+
 /// App entry. Called from both `main.rs` and mobile wrappers.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     strip_appimage_env();
+    install_positioner_panic_silencer();
 
     let state = AppState::default();
     let engine = state.engine.clone();

@@ -57,15 +57,13 @@
     {
       id: "ollama",
       title: "Ollama (local)",
-      subtitle:
-        "Vaner calls a model on your own machine over localhost:11434. Free, private, no API key. The default.",
+      subtitle: "Local model on your machine. Default.",
       accent: "var(--vd-st-active)",
     },
     {
       id: "custom",
       title: "Custom endpoint",
-      subtitle:
-        "Any OpenAI-compatible URL — self-hosted vLLM / LM Studio, a private proxy, or (for advanced users) a cloud provider's API. Configure under Advanced.",
+      subtitle: "Any OpenAI-compatible URL. Configure under Advanced.",
       accent: "var(--vd-fg-3)",
     },
   ];
