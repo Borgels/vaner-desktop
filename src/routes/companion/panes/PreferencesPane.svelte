@@ -35,6 +35,14 @@
     uninstallEngineService,
     type ServiceState,
   } from "$lib/stores/engine-service.js";
+  import {
+    applyComputePreset,
+    classifyPreset,
+    computeConfig,
+    loadComputeConfig,
+    setComputeKey,
+    type ComputePreset,
+  } from "$lib/stores/compute-config.js";
 
   // Silent-hours window — From / To, weekdays-only. Persisted to
   // localStorage for v0.2.2 alongside the simple `silentHours` toggle
@@ -123,6 +131,66 @@
     }
   }
 
+  // Performance card. Three preset rows + an Advanced disclosure
+  // with the underlying knobs. Reads + writes through the Rust-side
+  // engine_config commands; never touches .vaner/config.toml directly
+  // so validation/aliases continue to live in the Python CLI.
+  const PRESETS: { id: ComputePreset; title: string; subtitle: string }[] = [
+    {
+      id: "light",
+      title: "Light",
+      subtitle: "Quietest. CPU cap 15%, idle-only, scans cancel after 3 minutes.",
+    },
+    {
+      id: "balanced",
+      title: "Balanced",
+      subtitle: "Default. CPU cap 25%, idle-only, scans cancel after 5 minutes.",
+    },
+    {
+      id: "performance",
+      title: "Performance",
+      subtitle: "Loudest. CPU cap 50%, runs continuously, scans cancel after 10 minutes.",
+    },
+  ];
+
+  let computeBusy = $state(false);
+  let showAdvanced = $state(false);
+  async function selectPreset(preset: ComputePreset) {
+    if (computeBusy) return;
+    computeBusy = true;
+    try {
+      await applyComputePreset(preset);
+      showToast(`Performance set to ${preset}.`, "success", 2500);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : `Could not apply preset: ${err}`,
+        "attention",
+        4000,
+      );
+    } finally {
+      computeBusy = false;
+    }
+  }
+  async function setKey(key: string, value: string) {
+    if (computeBusy) return;
+    computeBusy = true;
+    try {
+      await setComputeKey(key, value);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : `Could not set ${key}: ${err}`,
+        "attention",
+        4000,
+      );
+      // Re-sync from disk in case the partial write left state out
+      // of step with what the slider thinks.
+      await loadComputeConfig();
+    } finally {
+      computeBusy = false;
+    }
+  }
+  const activePreset = $derived(classifyPreset($computeConfig));
+
   let serviceBusy = $state(false);
   function describeServiceState(state: ServiceState | undefined): string {
     switch (state) {
@@ -200,6 +268,7 @@
     // to surface the actual current path instead of "(none)".
     loadWorkspace();
     loadEngineServiceStatus();
+    loadComputeConfig();
   });
 
   const bundle = $derived($setup.bundle);
@@ -286,6 +355,105 @@
   </label>
 
   <p class="hint">Prepared moments are held silently — Vaner surfaces them when you're back.</p>
+</div>
+
+<!-- Performance -->
+<div class="card">
+  <div class="card-head"><span class="rail" style="background: var(--vd-st-active);"></span><span>Performance</span></div>
+  {#if $computeConfig}
+    {@const cfg = $computeConfig}
+    <V1Body
+      muted
+      text="How hard Vaner pushes the engine. Pick a preset for one-click defaults, or expand Advanced to nudge the knobs."
+    />
+    <div class="presets">
+      {#each PRESETS as preset (preset.id)}
+        {@const selected = activePreset === preset.id}
+        <button
+          type="button"
+          class="preset-row"
+          class:selected
+          disabled={computeBusy}
+          onclick={() => selectPreset(preset.id)}
+        >
+          <span class="preset-title">{preset.title}</span>
+          <span class="preset-sub">{preset.subtitle}</span>
+          {#if selected}
+            <span class="preset-badge">ACTIVE</span>
+          {/if}
+        </button>
+      {/each}
+    </div>
+
+    <button
+      type="button"
+      class="adv-toggle"
+      onclick={() => (showAdvanced = !showAdvanced)}
+    >
+      <span aria-hidden="true">{showAdvanced ? "▾" : "▸"}</span>
+      <span>Advanced</span>
+    </button>
+
+    {#if showAdvanced}
+      <div class="adv-block">
+        <p class="adv-explainer">
+          A <em>scan</em> is one pass where Vaner re-reads what's changed in your repo and updates its memory. Vaner runs scans continuously in the background.
+        </p>
+
+        <label class="slider-row">
+          <span class="slider-label">
+            CPU cap
+            <span class="slider-value">{Math.round(cfg.cpu_fraction * 100)}%</span>
+          </span>
+          <input
+            type="range"
+            min="5"
+            max="100"
+            step="5"
+            value={Math.round(cfg.cpu_fraction * 100)}
+            disabled={computeBusy}
+            onchange={(e) =>
+              setKey("compute.cpu_fraction", String(Number((e.currentTarget as HTMLInputElement).value) / 100))}
+          />
+          <span class="slider-help">Maximum share of host CPU the scan loop may use.</span>
+        </label>
+
+        <label class="slider-row">
+          <span class="slider-label">
+            Cancel scan after
+            <span class="slider-value">{cfg.max_cycle_seconds}s</span>
+          </span>
+          <input
+            type="range"
+            min="30"
+            max="1800"
+            step="30"
+            value={cfg.max_cycle_seconds}
+            disabled={computeBusy}
+            onchange={(e) =>
+              setKey("compute.max_cycle_seconds", (e.currentTarget as HTMLInputElement).value)}
+          />
+          <span class="slider-help">Hard ceiling on a single scan. Anything longer is rescheduled.</span>
+        </label>
+
+        <label class="row">
+          <input
+            type="checkbox"
+            checked={cfg.idle_only}
+            disabled={computeBusy}
+            onchange={(e) =>
+              setKey("compute.idle_only", String((e.currentTarget as HTMLInputElement).checked))}
+          />
+          <span class="row-text">
+            <span class="row-title">Only scan while the host is idle</span>
+            <span class="row-detail">Pauses the loop when CPU is busier than {Math.round(cfg.idle_cpu_threshold * 100)}%. Off = continuous.</span>
+          </span>
+        </label>
+      </div>
+    {/if}
+  {:else}
+    <V1Body muted text="Loading performance settings…" />
+  {/if}
 </div>
 
 <!-- Startup -->
@@ -561,5 +729,119 @@
     font-size: 12px;
     color: var(--vd-fg-3);
     font-style: italic;
+  }
+  .presets {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .preset-row {
+    display: grid;
+    grid-template-columns: max-content 1fr max-content;
+    grid-template-rows: auto auto;
+    column-gap: 12px;
+    row-gap: 2px;
+    align-items: baseline;
+    padding: 10px 12px;
+    background: var(--vd-bg-1);
+    border: 0.5px solid var(--vd-line);
+    border-radius: var(--vd-r-chip);
+    text-align: left;
+    cursor: pointer;
+    color: var(--vd-fg-1);
+    font: inherit;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+  .preset-row:hover:not(:disabled) {
+    background: var(--vd-bg-2);
+  }
+  .preset-row:disabled { opacity: 0.5; cursor: not-allowed; }
+  .preset-row.selected {
+    border-color: color-mix(in srgb, var(--vd-st-active) 60%, transparent);
+    background: color-mix(in srgb, var(--vd-st-active) 8%, var(--vd-bg-1));
+  }
+  .preset-title {
+    grid-column: 1;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .preset-sub {
+    grid-column: 1 / span 3;
+    grid-row: 2;
+    font-size: 11.5px;
+    color: var(--vd-fg-3);
+    line-height: 1.4;
+  }
+  .preset-badge {
+    grid-column: 3;
+    grid-row: 1;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--vd-st-active);
+    align-self: center;
+  }
+  .adv-toggle {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    padding: 4px 0;
+    color: var(--vd-fg-3);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .adv-toggle:hover { color: var(--vd-fg-2); }
+  .adv-block {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 4px;
+  }
+  .adv-explainer {
+    margin: 0;
+    font-size: 11.5px;
+    color: var(--vd-fg-3);
+    line-height: 1.5;
+  }
+  .adv-explainer em {
+    color: var(--vd-fg-1);
+    font-style: normal;
+    font-weight: 500;
+  }
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .slider-label {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--vd-fg-1);
+  }
+  .slider-value {
+    font-family: var(--vd-font-mono);
+    font-size: 11.5px;
+    color: var(--vd-fg-2);
+  }
+  .slider-row input[type="range"] {
+    width: 100%;
+    accent-color: var(--vd-st-active);
+  }
+  .slider-help {
+    font-size: 11px;
+    color: var(--vd-fg-3);
+    line-height: 1.45;
   }
 </style>

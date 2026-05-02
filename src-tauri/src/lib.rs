@@ -29,6 +29,7 @@ pub mod commands;
 pub mod companion;
 pub mod diagnostics;
 pub mod engine;
+pub mod engine_config;
 pub mod engine_service;
 pub mod ollama;
 pub mod onboarding;
@@ -174,6 +175,9 @@ pub fn run() {
             engine_service::engine_service_install,
             engine_service::engine_service_uninstall,
             engine_service::engine_service_set_linger,
+            engine_config::compute_config_get,
+            engine_config::compute_config_set,
+            engine_config::compute_apply_preset,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
