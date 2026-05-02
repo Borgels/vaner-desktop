@@ -4,7 +4,6 @@
 -->
 <script lang="ts">
   import QuietShell from "$lib/components/primitives/QuietShell.svelte";
-  import V1Kicker from "$lib/components/primitives/V1Kicker.svelte";
   import V1Headline from "$lib/components/primitives/V1Headline.svelte";
   import V1Body from "$lib/components/primitives/V1Body.svelte";
   import V1PrimaryButton from "$lib/components/primitives/V1PrimaryButton.svelte";
@@ -54,8 +53,6 @@
 </script>
 
 <QuietShell markState="attention" stateLabel="Engine unavailable" stateLabelTint="var(--vd-st-attention)">
-  <V1Kicker text="Engine error" color="var(--vd-st-attention)" />
-  <div class="gap-6"></div>
   <V1Headline text={engine.message} />
 
   <div class="info">
@@ -81,7 +78,7 @@
   </div>
 
   {#snippet footer()}
-    <PopoverFooter health="attention" healthLabel="Engine unreachable" />
+    <PopoverFooter health="attention" />
   {/snippet}
 </QuietShell>
 
