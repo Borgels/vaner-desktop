@@ -28,6 +28,7 @@ pub mod commands;
 pub mod companion;
 pub mod diagnostics;
 pub mod engine;
+pub mod engine_config;
 pub mod onboarding;
 pub mod popover;
 pub mod prepared_work_endpoint;
@@ -153,6 +154,9 @@ pub fn run() {
             workspace::workspace_get,
             workspace::workspace_set,
             workspace::workspace_pick,
+            engine_config::compute_config_get,
+            engine_config::compute_config_set,
+            engine_config::compute_apply_preset,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
