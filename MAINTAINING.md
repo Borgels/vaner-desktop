@@ -78,11 +78,15 @@ Once per repo lifetime — the workflow handles refreshes from then on.
 
 ## What an end-user install looks like
 
-The recommended path stays `scripts/install.sh`, which adds the apt repo and pins the fingerprint:
+The recommended path is the SHA-pinned mirror at `vaner.ai/desktop.sh` (mirrored from `Borgels/vaner-desktop/main/scripts/install.sh` by [`vaner-web/scripts/fetch-install-script.mjs`](https://github.com/Borgels/vaner-web/blob/main/scripts/fetch-install-script.mjs)):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop/main/scripts/install.sh | bash
+curl -fsSL https://vaner.ai/desktop.sh | bash
 ```
+
+The mirror's prebuild step verifies the upstream SHA against the pin in `vaner-web/scripts/desktop-script.sha256`, so a tampered `main` fails the deploy rather than silently shipping. If you change `scripts/install.sh` here, bump the pin in vaner-web in the same release.
+
+The raw GitHub URL (`https://raw.githubusercontent.com/Borgels/vaner-desktop/main/scripts/install.sh`) still works as a fallback if `vaner.ai` is unreachable, but documentation should point at the mirror.
 
 Subsequent upgrades come through `apt upgrade` like any other package.
 
