@@ -6,7 +6,10 @@
   import { bootstrapAppStateListeners } from "$lib/stores/app-state.js";
   import { bootstrapUpdaterListeners } from "$lib/stores/updater.js";
   import { loadStatus } from "$lib/stores/setup.js";
+  import { rescan as rescanClients } from "$lib/stores/clients.js";
+  import { bootstrapDaemonAudit, disposeDaemonAudit } from "$lib/stores/daemon-audit.js";
   import {
+    boostEngineStatusPolling,
     setSourcesCount,
     startEngineStatusPolling,
     stopEngineStatusPolling,
@@ -15,6 +18,21 @@
     startAgentDetectorPolling,
     stopAgentDetectorPolling,
   } from "$lib/stores/agent-detector.js";
+  import {
+    startOllamaHealthListener,
+    stopOllamaHealthListener,
+  } from "$lib/stores/ollama-health.js";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { showToast } from "$lib/stores/toast.js";
+
+  type BringUpOutcome = "already_running" | "started" | "failed" | "no_workspace";
+  type BringUpEvent = {
+    outcome: BringUpOutcome;
+    workspace: string | null;
+    detail: string;
+  };
+
+  let bringUpUnlisten: UnlistenFn | null = null;
 
   let { children } = $props();
 
@@ -28,18 +46,54 @@
 
     bootstrapAppStateListeners();
     bootstrapUpdaterListeners();
+    void bootstrapDaemonAudit();
+
+    // Listen for the startup auto-bring-up result. The Rust side
+    // shells `vaner up --detach` itself when the cockpit is down; we
+    // boost the engine_status poll to 500ms so the popover flips out
+    // of .error within half a second of cockpit-up, and surface a
+    // toast on failure so the user has something to act on.
+    bringUpUnlisten = await listen<BringUpEvent>("engine:bring-up", (event) => {
+      const result = event.payload;
+      if (result.outcome === "started") {
+        boostEngineStatusPolling(15_000);
+      } else if (result.outcome === "failed") {
+        boostEngineStatusPolling(15_000);
+        showToast(
+          result.detail || "Vaner could not start the engine.",
+          "attention",
+          5000,
+        );
+      }
+      // already_running and no_workspace are silent — the popover
+      // surfaces the right state on its own.
+    });
 
     // Reducer-input polling. Both are idempotent; the popover survives
     // these returning errors (the stores keep their last value).
     startEngineStatusPolling();
     startAgentDetectorPolling();
+    void startOllamaHealthListener();
+
+    // Probe MCP-client integrations. The reducer routes the popover
+    // to .notWiredToAnyClient when zero clients have Vaner registered,
+    // so this needs to run on bootstrap (without it, `total = 0` and
+    // the reducer falls through to engine state — wrong UX for fresh
+    // installs).
+    void rescanClients();
+    // Re-probe whenever the popover regains focus. Common flow: user
+    // clicks "Connect a client", lands on the Agents pane, installs
+    // Vaner into Cursor, returns to the popover — without this, the
+    // wired-count stays at 0 and the .notWiredToAnyClient panel
+    // sticks around even though the install succeeded.
+    const win = getCurrentWebviewWindow();
+    void win.onFocusChanged(({ payload: focused }) => {
+      if (focused) void rescanClients();
+    });
 
     // First-run check: if no setup has completed, open the dedicated
-    // onboarding window. The popover keeps rendering its current state
-    // (engineMissing / installedNotConnected / etc.) while the user
-    // runs through onboarding in the second window. On completion the
-    // onboarding side calls close_onboarding and the layout never
-    // re-fires this branch.
+    // onboarding window. (Re-run setup is also reachable from
+    // Preferences, so this is a nudge, not a gate.)
     try {
       const status = await loadStatus();
       const completedAt = status?.setup?.completed_at;
@@ -62,6 +116,9 @@
   onDestroy(() => {
     stopEngineStatusPolling();
     stopAgentDetectorPolling();
+    stopOllamaHealthListener();
+    bringUpUnlisten?.();
+    void disposeDaemonAudit();
   });
 </script>
 

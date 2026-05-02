@@ -14,24 +14,96 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Manager, PhysicalPosition, Runtime};
+// `tauri_plugin_positioner` is only used on non-unix platforms; on
+// Linux we go straight to deterministic monitor-edge placement (see
+// the comment in [`show`]) and the imports would warn as unused.
+#[cfg(not(unix))]
+use std::panic::AssertUnwindSafe;
+#[cfg(not(unix))]
+use tauri_plugin_positioner::{Position, WindowExt};
 
 pub const WINDOW_LABEL: &str = "main";
 static PINNED: AtomicBool = AtomicBool::new(false);
 
-/// Show the popover. Window-positioning anchoring (e.g.
-/// `tauri-plugin-positioner::Position::TrayCenter`) was tried and
-/// removed: the plugin panics with "Tray position not set" when its
-/// internal cache is empty, the panic survives `catch_unwind` only on
-/// the strict letter — the popover then refuses to surface anyway.
-/// Without explicit positioning, the window opens wherever the
-/// compositor places it (typically last-known or center-of-screen),
-/// which is acceptable for a borderless popover.
+/// Inset from the right edge of the screen for the SNI-fallback
+/// anchor. Matches the visual breathing room a stock GNOME panel
+/// gives its right-most indicator.
+const FALLBACK_INSET_RIGHT_PX: i32 = 12;
+/// Inset below the top edge for the SNI-fallback anchor. Picked to
+/// clear the GNOME top panel (~30 px) plus a hair so the popover
+/// doesn't kiss the panel border.
+const FALLBACK_INSET_TOP_PX: i32 = 36;
+
+/// Show the popover, anchored under the tray icon (NSPopover-style).
+///
+/// Two-stage placement:
+///   1. Try `Position::TrayBottomCenter`. On macOS / Windows /
+///      X11-with-real-tray-window this hangs the popover directly
+///      below the tray icon center, the closest macOS-NSPopover
+///      analog. The plugin reads tray bounds from the cache that
+///      `tray::install`'s `on_tray_icon_event` keeps fresh.
+///   2. If step 1 panics (older plugin versions when the cache is
+///      empty) or produces a position near the screen origin
+///      (the StatusNotifierItem path GNOME's AppIndicator extension
+///      uses doesn't expose tray geometry, so the cache reports
+///      `(0, 0)` — TrayBottomCenter then puts the window at
+///      `(0 - 210, 0)` which gets clamped to top-left), fall back
+///      to a deterministic top-right anchor on the current monitor
+///      (right-aligned with a small inset, just below the panel).
+///
+/// Step 2 is the right answer for ~all Linux desktops we care about:
+/// GNOME, KDE, XFCE, Cinnamon — every one of them puts tray icons in
+/// the top-right (or bottom-right) panel area, and "top-right of the
+/// monitor" is a closer match for "near the tray icon" than
+/// "wherever the compositor felt like".
 pub fn show<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let window = app
         .get_webview_window(WINDOW_LABEL)
         .ok_or(tauri::Error::WindowNotFound)?;
     window.show()?;
+
+    // Linux: skip `Position::TrayBottomCenter` entirely. The plugin
+    // panics on a separate thread (`zbus::Connection executor` →
+    // `Tray position not set` at ext.rs:301:17) on hosts where the
+    // SNI/AppIndicator panel hasn't reported the tray icon's
+    // geometry — and most Linux desktops don't. The panic is on a
+    // worker thread so it doesn't crash us, but it pollutes the
+    // user's terminal and isn't useful: the positioner ends up
+    // landing on (0,0) anyway, which the fallback below would
+    // overwrite. Going straight to the deterministic monitor-edge
+    // placement keeps stderr clean and gives a single predictable
+    // position the user can drag from.
+    #[cfg(unix)]
+    let tray_anchor_ok = false;
+    #[cfg(not(unix))]
+    let tray_anchor_ok = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        window.move_window(Position::TrayBottomCenter).is_ok()
+    }))
+    .unwrap_or(false);
+
+    let bogus_position = window
+        .outer_position()
+        .map(|p| p.x < 100 && p.y < 100)
+        .unwrap_or(true);
+
+    if !tray_anchor_ok || bogus_position {
+        // Top-right of the focused monitor with a small inset.
+        // `current_monitor` returns the monitor the window currently
+        // overlaps, which after `window.show()` is the user's primary
+        // monitor — not whichever happens to be index 0.
+        if let Ok(Some(monitor)) = window.current_monitor() {
+            let m_size = monitor.size();
+            let m_pos = monitor.position();
+            let win_size = window
+                .outer_size()
+                .unwrap_or(tauri::PhysicalSize::new(420, 520));
+            let x = m_pos.x + m_size.width as i32 - win_size.width as i32 - FALLBACK_INSET_RIGHT_PX;
+            let y = m_pos.y + FALLBACK_INSET_TOP_PX;
+            let _ = window.set_position(PhysicalPosition::new(x, y));
+        }
+    }
+
     window.set_always_on_top(PINNED.load(Ordering::Relaxed))?;
     window.set_focus()?;
     Ok(())

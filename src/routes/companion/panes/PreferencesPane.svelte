@@ -13,7 +13,9 @@
 -->
 <script lang="ts">
   import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import V1Kicker from "$lib/components/primitives/V1Kicker.svelte";
+  import DocsLink from "$lib/components/primitives/DocsLink.svelte";
   import V1Headline from "$lib/components/primitives/V1Headline.svelte";
   import V1Body from "$lib/components/primitives/V1Body.svelte";
   import V1GhostButton from "$lib/components/primitives/V1GhostButton.svelte";
@@ -21,6 +23,42 @@
   import { setup, loadStatus, loadHardware, loadPolicy } from "$lib/stores/setup.js";
   import { silentHours } from "$lib/stores/silent-hours.js";
   import { showToast } from "$lib/stores/toast.js";
+
+  // Friendly labels for the underlying enum strings the daemon emits.
+  // `bundle.label` and `bundle.description` already carry human copy
+  // when present, so we prefer those; the maps below are fallbacks for
+  // older daemons that only return ids and tier slugs.
+  const TIER_LABEL: Record<string, string> = {
+    light: "Light",
+    capable: "Capable",
+    high_performance: "High performance",
+    unknown: "—",
+    other: "—",
+  };
+  const BUNDLE_LABEL: Record<string, string> = {
+    local_light: "Light (local)",
+    local_balanced: "Balanced (local)",
+    local_heavy: "Performance (local)",
+    hybrid_balanced: "Balanced (hybrid)",
+    hybrid_advanced: "Advanced (hybrid)",
+    cloud_balanced: "Balanced (cloud)",
+    cloud_advanced: "Advanced (cloud)",
+  };
+  function bundleLabel(b: { id?: string; label?: string } | null | undefined): string {
+    if (!b) return "—";
+    if (b.label && b.label.trim().length > 0) return b.label;
+    return BUNDLE_LABEL[b.id ?? ""] ?? (b.id ?? "—");
+  }
+  function tierLabel(t: string | undefined): string {
+    if (!t) return "";
+    return TIER_LABEL[t] ?? t;
+  }
+  // Performance presets, systemd-engine + linger toggles all moved
+  // to the Engine pane (companion/panes/EnginePane.svelte). They are
+  // engine-lifecycle settings, not app UX. Preferences is now strictly
+  // about how the desktop *itself* behaves: silent hours, launch-at-
+  // login (XDG autostart of vaner-desktop, not the engine), memory
+  // export.
 
   // Silent-hours window — From / To, weekdays-only. Persisted to
   // localStorage for v0.2.2 alongside the simple `silentHours` toggle
@@ -77,12 +115,26 @@
   });
 
   let confirmClear = $state(false);
-  function exportMemory() {
-    showToast("Memory export — daemon endpoint lands in v0.2.3.", "info", 3500);
+  async function exportMemory() {
+    try {
+      // No /docs/memory page exists yet; the privacy page is the
+      // closest doc that explains where data lives until the
+      // daemon ships an export endpoint.
+      await invoke("open_external_url", { url: "https://vaner.ai/privacy" });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err), "attention", 3500);
+    }
+  }
+  async function openPrivacyDocs() {
+    try {
+      await invoke("open_external_url", { url: "https://vaner.ai/privacy" });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err), "attention", 3500);
+    }
   }
   function clearMemory() {
     confirmClear = false;
-    showToast("Memory cleared on UI; daemon-side wipe pending v0.2.3.", "info", 3500);
+    showToast("Daemon-side memory wipe isn't wired yet.", "info", 3500);
   }
 
   onMount(() => {
@@ -96,7 +148,10 @@
 </script>
 
 <header class="hd">
-  <V1Kicker text="Preferences" />
+  <div class="kicker-row">
+    <V1Kicker text="Preferences" />
+    <DocsLink path="/docs/policy-bundles" />
+  </div>
   <V1Headline text="How Vaner sounds and when it speaks" size={22} />
 </header>
 
@@ -105,19 +160,16 @@
   <div class="card-head"><span class="rail" style="background: var(--vd-purple);"></span><span>Active setup</span></div>
   {#if bundle}
     <div class="bundle-row">
-      <span class="bundle-name">{bundle.id ?? "—"}</span>
+      <span class="bundle-name">{bundleLabel(bundle)}</span>
       {#if tier}
-        <span class="tier">{tier}</span>
+        <span class="tier">{tierLabel(tier)}</span>
       {/if}
     </div>
-    {#if bundle.description}
-      <p class="muted">{bundle.description}</p>
-    {/if}
     <div class="actions">
-      <V1GhostButton title="Re-run setup wizard" onclick={() => (window.location.href = "/setup")} />
+      <V1GhostButton title="Re-run setup" onclick={() => (window.location.href = "/setup")} />
     </div>
   {:else}
-    <p class="muted">Loading bundle…</p>
+    <p class="muted">Loading…</p>
   {/if}
 </div>
 
@@ -127,8 +179,7 @@
   <label class="row">
     <input type="checkbox" bind:checked={$silentHours} />
     <span class="row-text">
-      <span class="row-title">Suppress interrupts during deep work</span>
-      <span class="row-detail">Vaner still indexes; it just doesn't surface anything until silent hours end.</span>
+      <span class="row-title">Hold notifications during deep work</span>
     </span>
   </label>
 
@@ -149,7 +200,6 @@
     <span class="row-title">Weekdays only</span>
   </label>
 
-  <p class="hint">Prepared moments are held silently — Vaner surfaces them when you're back.</p>
 </div>
 
 <!-- Startup -->
@@ -159,7 +209,6 @@
     <input type="checkbox" bind:checked={launchAtLogin} />
     <span class="row-text">
       <span class="row-title">Launch Vaner at login</span>
-      <span class="row-detail">Drops an XDG autostart entry under <code>~/.config/autostart/</code> on toggle. Daemon-side wiring lands in v0.2.3.</span>
     </span>
   </label>
 </div>
@@ -167,14 +216,10 @@
 <!-- Memory -->
 <div class="card">
   <div class="card-head"><span class="rail" style="background: var(--vd-st-attention);"></span><span>Memory</span></div>
-  <V1Body
-    muted
-    text="Vaner stores feedback, preferences, and learned signals locally."
-  />
   <div class="actions">
-    <V1GhostButton title="Export memory" onclick={exportMemory} />
-    <V1GhostButton title="Open privacy view" onclick={() => showToast("Opens vaner.ai/privacy in v0.2.3.", "info", 3000)} />
-    <V1GhostButton title="Clear memory…" destructive onclick={() => (confirmClear = true)} />
+    <V1GhostButton title="Export…" onclick={exportMemory} />
+    <V1GhostButton title="Privacy" onclick={openPrivacyDocs} />
+    <V1GhostButton title="Clear…" destructive onclick={() => (confirmClear = true)} />
   </div>
   {#if confirmClear}
     <div class="confirm">
@@ -193,6 +238,12 @@
     flex-direction: column;
     gap: 6px;
     margin-bottom: 24px;
+  }
+  .kicker-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
   }
   .card {
     background: var(--vd-bg-1);

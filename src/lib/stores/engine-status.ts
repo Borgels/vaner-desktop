@@ -1,9 +1,18 @@
-// Live engine status — populated by polling the Rust `engine_status`
-// command. The reducer's stub default (reachable=true / 0 sources)
-// keeps the popover landing on .installedNotConnected at startup;
-// the first poll replaces it with the real shape.
+// Live engine status — hydrated by listening to `engine:status`
+// events emitted from the Rust-side single-source poller in
+// `src-tauri/src/engine_status_task.rs`. The cadence (and probe
+// itself) live there so every webview sees the same boolean at the
+// same time. Per-window polling was the source of popover/companion
+// disagreement before this refactor.
+//
+// Each layout calls `startEngineStatusListener()` on mount; the call
+// is idempotent across windows and across re-mounts inside one
+// window. The Tauri event bus broadcasts to all webviews, so the
+// popover and the companion's Engine pane react to the same payload
+// at the same moment.
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { writable, type Writable } from "svelte/store";
 import type { EngineStatus } from "$lib/state/types.js";
 
@@ -34,44 +43,67 @@ export function setEngineStatus(s: EngineStatus): void {
   engineStatus.set(s);
 }
 
-let pollHandle: ReturnType<typeof setInterval> | null = null;
-
-/** Begin polling `engine_status` from Rust every `intervalMs`. Idempotent.
- *  `sources_count` is overlaid from setup_status by a separate caller —
- *  this poll only learns reachability + indexing kind. */
-export function startEngineStatusPolling(intervalMs = 5000): void {
-  if (pollHandle != null) return;
-  const tick = async () => {
-    try {
-      const out = await invoke<EngineStatusOut>("engine_status");
-      engineStatus.update((prev) => ({
-        ...prev,
-        reachable: out.reachable,
-        cliMissing: out.cli_missing,
-        filesWatched: out.files_watched,
-        // Keep prev.sourcesCount until the setup-status overlay fires
-        // (we don't want to flap the reducer between
-        // .installedNotConnected and .watching).
-        uptimeMinutes: out.uptime_minutes || prev.uptimeMinutes,
-        indexing: out.indexing_kind === "learning"
-          ? { kind: "learning", currentlyReading: [], etaMinutes: null }
-          : { kind: "idle" },
-      }));
-    } catch {
-      // Defensive: invoke itself failed (Tauri runtime issue, not a
-      // CLI-missing case — the Rust side returns Ok with cli_missing
-      // for that). Flag unreachable but don't claim cliMissing.
-      engineStatus.update((prev) => ({ ...prev, reachable: false }));
-    }
-  };
-  void tick();
-  pollHandle = setInterval(tick, intervalMs);
+function applyOut(out: EngineStatusOut): void {
+  engineStatus.update((prev) => ({
+    ...prev,
+    reachable: out.reachable,
+    cliMissing: out.cli_missing,
+    filesWatched: out.files_watched,
+    // Keep prev.sourcesCount until the setup-status overlay fires
+    // (we don't want to flap the reducer between
+    // .installedNotConnected and .watching).
+    uptimeMinutes: out.uptime_minutes || prev.uptimeMinutes,
+    indexing: out.indexing_kind === "learning"
+      ? { kind: "learning", currentlyReading: [], etaMinutes: null }
+      : { kind: "idle" },
+  }));
 }
 
-export function stopEngineStatusPolling(): void {
-  if (pollHandle != null) {
-    clearInterval(pollHandle);
-    pollHandle = null;
+let unlisten: UnlistenFn | null = null;
+let started = false;
+
+/** Subscribe to the Rust-side `engine:status` event stream. Idempotent
+ *  across calls and across windows. The first call also pulls the
+ *  current cached snapshot so the UI doesn't flash the stub. */
+export async function startEngineStatusListener(): Promise<void> {
+  if (started) return;
+  started = true;
+
+  // Hydrate from the current cache so first paint is correct.
+  try {
+    const snapshot = await invoke<EngineStatusOut>("engine_status");
+    applyOut(snapshot);
+  } catch {
+    engineStatus.update((prev) => ({ ...prev, reachable: false }));
+  }
+
+  unlisten = await listen<EngineStatusOut>("engine:status", (e) => {
+    applyOut(e.payload);
+  });
+}
+
+export function stopEngineStatusListener(): void {
+  unlisten?.();
+  unlisten = null;
+  started = false;
+}
+
+// Backwards-compatible names — earlier code called these. They now
+// just route through the listener so older call sites keep working.
+export const startEngineStatusPolling = startEngineStatusListener;
+export const stopEngineStatusPolling = stopEngineStatusListener;
+
+/** Boost the Rust-side poller to 500ms for `durationMs` (default
+ *  10s). Called after a bring-up / restart so the popover flips out
+ *  of `.error` within a fraction of a second of the cockpit
+ *  answering rather than waiting up to a full base interval. */
+export async function boostEngineStatusPolling(durationMs = 10_000): Promise<void> {
+  try {
+    await invoke("engine_status_boost", { durationMs });
+  } catch {
+    // Best-effort: if the Rust side is still booting the boost
+    // command may not be registered yet. Next tick of the base
+    // interval will land soon enough.
   }
 }
 

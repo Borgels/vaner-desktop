@@ -11,6 +11,7 @@
 import { isAdoptable, type PredictedPrompt, type PreparedWorkCard } from "$lib/contract/types.js";
 import type {
   AgentSuggestion,
+  ClientDetectStatus,
   EngineStatus,
   LearningProgress,
   PreparedList,
@@ -26,6 +27,21 @@ export interface ReducerInputs {
   anyAgentRunning: boolean;
   silentHours: boolean;
   hasAnySource: boolean;
+  /** Snapshot of which AI clients have Vaner registered. When zero
+   *  clients are wired in, the desktop has no consumer for the
+   *  daemon — surfacing engine state ahead of "go integrate Vaner
+   *  somewhere" is putting the cart before the horse. The popover
+   *  routes to `.notWiredToAnyClient` until the detector confirms
+   *  ≥1 wired client. Defaults are tolerant: if `detected.total = 0`
+   *  the detector hasn't run yet (or failed), and we don't gate on
+   *  it — falling through to whichever engine state is real. */
+  clientDetect: ClientDetectStatus;
+  /** Ollama presence + reachability. Vaner's local-first default
+   *  backend is Ollama on `127.0.0.1:11434`; if it isn't installed
+   *  the model loop 502s on every MCP call. Routed before the
+   *  engine-error branch so the user sees the *cause* ("install
+   *  Ollama") rather than the *symptom* ("engine isn't responding"). */
+  ollamaHealth: { installed: boolean; running: boolean; detail: string };
   /** 0.8.0 prediction-centric pondering. Defaults to [] for callers
    *  that haven't been updated to the new shape. */
   activePredictions: PredictedPrompt[];
@@ -51,8 +67,40 @@ export function reduce(i: ReducerInputs): VanerState {
     return { kind: "notInstalled" };
   }
 
-  // 1b. Engine unreachable → .error (overrides pause; the user needs
-  //     to know the engine is down even if they asked for quiet)
+  // 1b. No MCP client has Vaner wired in → .notWiredToAnyClient.
+  //     This MUST sit before the engine-reachability check: with
+  //     production-mode auto-bring-up disabled, a fresh install
+  //     legitimately has no daemon running until a client invokes
+  //     `vaner mcp`. Showing .error in that window is wrong — the
+  //     engine isn't broken, it's idle because no consumer exists.
+  //     `total === 0` (detector hasn't completed yet) is treated
+  //     as wiredCount === 0 too, since "show the wire-a-client
+  //     panel for half a second on cold start" is a better UX than
+  //     "flash a scary engine-error then settle into the right
+  //     state."
+  if (i.clientDetect.wiredCount === 0) {
+    return { kind: "notWiredToAnyClient", detected: i.clientDetect };
+  }
+
+  // 1c. Local-first prerequisite: Ollama. Vaner's default backend
+  //     points at `127.0.0.1:11434`; if Ollama isn't installed (or
+  //     isn't running), the model loop 502s on every MCP call and
+  //     the user sees a "engine unreachable" toast that doesn't
+  //     name the actual cause. Surface `.ollamaMissing` before the
+  //     engine-state branches so the user gets the *cause* rather
+  //     than the *symptom*.
+  if (!i.ollamaHealth.installed) {
+    return {
+      kind: "ollamaMissing",
+      installed: false,
+      detail: i.ollamaHealth.detail,
+    };
+  }
+
+  // 1d. Clients are wired but the engine isn't reachable. Now it's
+  //     a real error — the user expects Vaner to be live somewhere
+  //     and the cockpit is silent. Overrides pause; this is
+  //     actionable.
   if (!i.status.reachable) {
     return {
       kind: "error",

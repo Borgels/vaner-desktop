@@ -23,7 +23,7 @@
   };
   const {
     health = "on",
-    healthLabel = "Engine running",
+    healthLabel,
     detailsDisabled = false,
     detailsTab = null,
   }: Props = $props();
@@ -40,7 +40,7 @@
   <V1GhostButton title="Details" disabled={detailsDisabled} onclick={openCompanion} />
   <span class="health">
     <VStateBadge state={health} size={6} />
-    <span>{healthLabel}</span>
+    {#if healthLabel}<span>{healthLabel}</span>{/if}
   </span>
 </div>
 

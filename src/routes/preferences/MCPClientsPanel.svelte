@@ -1,12 +1,47 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { clients, install, installAll, rescan, uninstall } from "$lib/stores/clients.js";
+  import { showToast } from "$lib/stores/toast.js";
 
   let pending: string | null = null;
+
+  // Auto-scan on mount. The companion window mounts this panel
+  // independently of the popover, and doesn't share the popover's
+  // bootstrap rescan — without this the user lands on a "no clients
+  // detected" empty state until they click Refresh, which the user
+  // shouldn't have to do.
+  onMount(() => {
+    void rescan();
+  });
+
+  // Surface install/uninstall outcomes as toasts. Pre-fix the buttons
+  // updated the state silently and the user couldn't tell whether
+  // anything happened — especially when a layer was already wired
+  // and the second-call install was a no-op.
+  function summarize(action: string, results: { client_id: string; overall: string }[]): { msg: string; level: "success" | "info" | "attention" } {
+    if (results.length === 0) {
+      // install()/uninstall() trap errors and return [] — clients
+      // store's lastError holds the reason.
+      return { msg: `${action} failed — see Diagnostics.`, level: "attention" };
+    }
+    const ready = results.filter((r) => r.overall === "ready").length;
+    const partial = results.filter((r) => r.overall === "partial" || r.overall === "wired-mcp-only").length;
+    const failed = results.filter((r) => r.overall === "missing" || r.overall === "not-detected").length;
+    if (failed > 0 && ready === 0 && partial === 0) {
+      return { msg: `${action} couldn't reach any client.`, level: "attention" };
+    }
+    if (partial > 0 && ready === 0) {
+      return { msg: `${action}: partial wiring (${partial}). Check Agents.`, level: "info" };
+    }
+    return { msg: `${action} complete.`, level: "success" };
+  }
 
   async function onInstall(id: string) {
     pending = id;
     try {
-      await install(id);
+      const out = await install(id);
+      const { msg, level } = summarize("Install", out);
+      showToast(msg, level, 3000);
     } finally {
       pending = null;
     }
@@ -15,7 +50,9 @@
   async function onReinstall(id: string) {
     pending = id;
     try {
-      await install(id, "", true);
+      const out = await install(id, "", true);
+      const { msg, level } = summarize("Reinstall", out);
+      showToast(msg, level, 3000);
     } finally {
       pending = null;
     }
@@ -24,7 +61,9 @@
   async function onRemove(id: string) {
     pending = id;
     try {
-      await uninstall(id);
+      const out = await uninstall(id);
+      const { msg, level } = summarize("Uninstall", out);
+      showToast(msg, level, 3000);
     } finally {
       pending = null;
     }
@@ -33,7 +72,9 @@
   async function onInstallAll() {
     pending = "__all__";
     try {
-      await installAll();
+      const out = await installAll();
+      const { msg, level } = summarize("Install", out);
+      showToast(msg, level, 3000);
     } finally {
       pending = null;
     }
@@ -42,14 +83,12 @@
   async function onUpdateAll() {
     pending = "__all__";
     try {
-      await installAll("", true);
+      const out = await installAll("", true);
+      const { msg, level } = summarize("Update", out);
+      showToast(msg, level, 3000);
     } finally {
       pending = null;
     }
-  }
-
-  async function onRefresh() {
-    await rescan();
   }
 
   $: hasUnconfigured = $clients.clients.some((c) => c.detected && !c.configured);
@@ -60,13 +99,8 @@
   <header class="panel-header">
     <div>
       <h2>MCP Clients</h2>
-      <p class="muted">
-        Install Vaner into the MCP-aware editors and agents on this machine. Idempotent
-        and backup-safe; user-configured non-Vaner servers are preserved.
-      </p>
     </div>
     <div class="header-actions">
-      <button type="button" on:click={onRefresh} disabled={$clients.isScanning}>Refresh</button>
       <button
         type="button"
         class="primary"
@@ -104,11 +138,11 @@
         <li class="client-row">
           <span class="status status-{c.status}" aria-label={c.status}>
             {#if c.status === "configured"}
-              ✓ Configured
+              ✓ Wired
             {:else if c.status === "installed"}
-              · Detected
+              · Not wired
             {:else}
-              ✗ Missing
+              ✗ Not found
             {/if}
           </span>
           <div class="client-meta">

@@ -14,8 +14,38 @@ pub fn resolve_vaner_bin() -> Result<PathBuf, String> {
             return Ok(PathBuf::from(explicit));
         }
     }
-    which::which("vaner").map_err(|_| {
-        "Vaner binary not found on PATH. Install Vaner via vaner.ai/install or set $VANER_BIN."
-            .to_string()
-    })
+    if let Ok(p) = which::which("vaner") {
+        return Ok(p);
+    }
+    // GUI processes (AppImage launched from a .desktop file, GNOME's
+    // tray-app autostart, etc.) run under a sanitised PATH that
+    // typically excludes `~/.local/bin` — where `pipx install vaner`
+    // lands by default. Probe the canonical install locations so the
+    // desktop doesn't tell the user "Vaner not found" when it's right
+    // there. Order mirrors the macOS app's `EngineDetector`.
+    let candidates: Vec<PathBuf> = std::env::var_os("HOME")
+        .map(|h| {
+            vec![
+                PathBuf::from(&h).join(".local/bin/vaner"),
+                PathBuf::from(&h).join(".cargo/bin/vaner"),
+            ]
+        })
+        .unwrap_or_default()
+        .into_iter()
+        .chain([
+            PathBuf::from("/usr/local/bin/vaner"),
+            PathBuf::from("/opt/homebrew/bin/vaner"),
+            PathBuf::from("/home/linuxbrew/.linuxbrew/bin/vaner"),
+        ])
+        .collect();
+    for p in candidates {
+        if p.is_file() {
+            return Ok(p);
+        }
+    }
+    Err(
+        "Vaner binary not found on PATH or in ~/.local/bin / /usr/local/bin. \
+         Install Vaner via vaner.ai/install.sh or set $VANER_BIN."
+            .to_string(),
+    )
 }

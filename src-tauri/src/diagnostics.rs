@@ -27,26 +27,31 @@ async fn run_vaner(args: &[&str], allow_nonzero: bool) -> Result<String, String>
 
 #[tauri::command]
 pub async fn diagnostics_status() -> Result<Value, String> {
-    let stdout = run_vaner(&["status", "--json"], true).await?;
+    let path = crate::workspace::resolve_str();
+    let stdout = run_vaner(&["status", "--json", "--path", &path], true).await?;
     serde_json::from_str::<Value>(&stdout).map_err(|e| format!("could not parse status JSON: {e}"))
 }
 
 #[tauri::command]
 pub async fn diagnostics_doctor() -> Result<Value, String> {
-    let stdout = run_vaner(&["doctor", "--json"], true).await?;
+    let path = crate::workspace::resolve_str();
+    let stdout = run_vaner(&["doctor", "--json", "--path", &path], true).await?;
     serde_json::from_str::<Value>(&stdout).map_err(|e| format!("could not parse doctor JSON: {e}"))
 }
 
 #[tauri::command]
 pub async fn diagnostics_restart_engine() -> Result<String, String> {
-    let _ = run_vaner(&["down"], true).await;
-    run_vaner(&["up", "--detach"], true)
+    let path = crate::workspace::resolve_str();
+    let _ = run_vaner(&["down", "--path", &path], true).await;
+    run_vaner(&["up", "--detach", "--path", &path], true)
         .await
         .map(|_| "Vaner restart requested.".to_string())
 }
 
 #[tauri::command]
 pub async fn diagnostics_upgrade_engine() -> Result<String, String> {
+    // `vaner upgrade` uses pipx/pip and doesn't take --path; it's a
+    // package-level operation, not a workspace one.
     run_vaner(&["upgrade"], true)
         .await
         .map(|_| "Vaner engine update finished.".to_string())
@@ -61,7 +66,11 @@ pub async fn set_local_model(model_id: String) -> Result<String, String> {
     if model_id.trim().is_empty() {
         return Err("model_id is required".to_string());
     }
-    run_vaner(&["config", "set", "backend.model", &model_id], true)
-        .await
-        .map(|_| format!("backend.model set to {model_id}"))
+    let path = crate::workspace::resolve_str();
+    run_vaner(
+        &["config", "set", "--path", &path, "backend.model", &model_id],
+        true,
+    )
+    .await
+    .map(|_| format!("backend.model set to {model_id}"))
 }

@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions the main window needs: invoke Rust commands, receive events, read/write clipboard, open dialogs.",
-  "windows": ["main"],
+  "description": "Permissions every Vaner window needs: invoke Rust commands, receive events, read/write clipboard, open dialogs. The companion and onboarding windows must be listed — without them, invoke() calls (including @tauri-apps/api/app getVersion) silently fail and the Diagnostics pane renders 'Desktop app: unknown'.",
+  "windows": ["main", "companion", "onboarding"],
   "permissions": [
     "core:default",
     "core:event:default",

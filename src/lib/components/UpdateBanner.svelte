@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { availableUpdate, updateProgress, installUpdate } from "$lib/stores/updater.js";
+  import {
+    availableUpdate,
+    installUpdate,
+    openReleasePage,
+    updateProgress,
+  } from "$lib/stores/updater.js";
 
   function dismiss() {
     availableUpdate.set(null);
@@ -7,16 +12,28 @@
 </script>
 
 {#if $availableUpdate}
+  {@const u = $availableUpdate}
+  {@const inAppOK = u.installKind === "appimage"}
   <div class="banner" role="status" aria-live="polite">
     <div class="copy">
       <span class="label">Update available</span>
       <span class="version">
-        {$availableUpdate.currentVersion} → <strong>{$availableUpdate.version}</strong>
+        {u.currentVersion} → <strong>{u.version}</strong>
       </span>
     </div>
     <div class="actions">
       {#if $updateProgress === null}
-        <button class="install" onclick={installUpdate}>Install</button>
+        {#if inAppOK}
+          <button class="install" onclick={installUpdate}>Install</button>
+        {:else}
+          <!-- Tauri's Linux updater can only self-replace AppImages.
+               .deb installs get the release page so the user can grab
+               the new .deb; "other" (snap, flatpak, dev build) gets
+               the same treatment since we don't know how to swap. -->
+          <button class="install" onclick={() => openReleasePage(u.version)}>
+            {u.installKind === "deb" ? "Download .deb" : "View release"}
+          </button>
+        {/if}
         <button class="later" onclick={dismiss}>Later</button>
       {:else}
         <div class="progress" aria-label="Update progress">

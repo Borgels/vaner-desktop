@@ -7,6 +7,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import V1Kicker from "$lib/components/primitives/V1Kicker.svelte";
+  import DocsLink from "$lib/components/primitives/DocsLink.svelte";
   import V1Headline from "$lib/components/primitives/V1Headline.svelte";
   import V1Body from "$lib/components/primitives/V1Body.svelte";
   import V1GhostButton from "$lib/components/primitives/V1GhostButton.svelte";
@@ -42,7 +43,10 @@
 </script>
 
 <header class="hd">
-  <V1Kicker text="Diagnostics" />
+  <div class="kicker-row">
+    <V1Kicker text="Diagnostics" />
+    <DocsLink path="/docs/troubleshooting" />
+  </div>
   <V1Headline text="Help me help you" size={22} />
   <V1Body
     muted
@@ -82,6 +86,7 @@
 
 <style>
   .hd { display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; }
+  .kicker-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .block { margin-bottom: 22px; }
   .kv {
     margin-top: 10px;
@@ -105,5 +110,8 @@
     color: var(--vd-fg-2);
     font-size: 11px;
     white-space: pre-wrap;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
   }
 </style>

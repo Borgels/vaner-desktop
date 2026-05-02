@@ -8,14 +8,18 @@
 # (with detached-signature verification) if apt / sudo isn't
 # available or the user explicitly opts out.
 #
-#   # recommended
+#   # recommended (SHA-pinned mirror on vaner-web)
+#   curl -fsSL https://vaner.ai/desktop.sh | bash
+#
+#   # canonical source if vaner.ai is unreachable:
 #   curl -fsSL https://raw.githubusercontent.com/Borgels/vaner-desktop/main/scripts/install.sh | bash
 #
 #   # one-off install, no apt-repo registration:
-#   VANER_MODE=deb curl -fsSL .../install.sh | bash
+#   VANER_MODE=deb curl -fsSL https://vaner.ai/desktop.sh | bash
 #
 #   # pinned version:
-#   VANER_DESKTOP_VERSION=v0.1.0 VANER_MODE=deb curl -fsSL .../install.sh | bash
+#   VANER_DESKTOP_VERSION=v0.1.0 VANER_MODE=deb \
+#     curl -fsSL https://vaner.ai/desktop.sh | bash
 #
 # Regardless of mode, the script refuses to install unless the
 # downloaded pubkey's fingerprint matches the pin below. That pin is
@@ -51,6 +55,51 @@ die() { echo "vaner-install: $*" >&2; exit 1; }
 command -v curl   >/dev/null || die "curl is required"
 command -v gpg    >/dev/null || die "gpg is required (sudo apt install gnupg)"
 command -v dpkg   >/dev/null || die "this installer is Debian/Ubuntu-only"
+
+# --- ensure Ollama --------------------------------------------------
+# Vaner is local-first: the default backend is Ollama on
+# localhost:11434, and every fresh `.vaner/config.toml` points there.
+# A Vaner desktop install without Ollama present is a paper tiger —
+# the popover would surface immediately, and the moment the user
+# tried to use it (an MCP client connects) the model loop would 502.
+# Install it up front so the local path Just Works after install.
+#
+# Skip via VANER_SKIP_OLLAMA=1 — useful for users who already have
+# Ollama installed via Snap/Flatpak/Homebrew and don't want the
+# system-package version layered in. Auto-skip when running
+# unattended (no TTY) so CI doesn't hang on the prompt.
+ensure_ollama() {
+  if [[ "${VANER_SKIP_OLLAMA:-0}" == "1" ]]; then
+    echo "→ ollama: skipped (VANER_SKIP_OLLAMA=1)"
+    return 0
+  fi
+  if command -v ollama >/dev/null 2>&1; then
+    local current
+    current=$(ollama --version 2>/dev/null | head -1 || echo "unknown")
+    echo "→ ollama: already installed ($current)"
+    return 0
+  fi
+  echo "→ ollama: not installed (Vaner needs it for local models)"
+  if [[ ! -t 0 && "${VANER_YES:-0}" != "1" ]]; then
+    echo "   (no TTY and VANER_YES not set — skipping; install ollama"
+    echo "    yourself from https://ollama.com/download to use local models.)"
+    return 0
+  fi
+  if [[ "${VANER_YES:-0}" != "1" ]]; then
+    read -r -p "   Install ollama now from https://ollama.com/install.sh? [Y/n] " reply
+    case "$reply" in
+      [Nn]* )
+        echo "   skipped — local models won't work until you install ollama."
+        return 0
+        ;;
+    esac
+  fi
+  echo "→ installing ollama (curl https://ollama.com/install.sh | sh)…"
+  curl -fsSL https://ollama.com/install.sh | sh \
+    || echo "   (ollama install exited non-zero — Vaner will install anyway; you can retry later.)"
+}
+
+ensure_ollama
 
 # --- apt-repo path --------------------------------------------------
 if [[ "$MODE" == "apt" ]]; then

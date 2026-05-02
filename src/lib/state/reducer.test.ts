@@ -50,10 +50,17 @@ const baseInputs = (override: Partial<ReducerInputs> = {}): ReducerInputs => ({
   anyAgentRunning: true,
   silentHours: false,
   hasAnySource: true,
+  // Detector reports ≥1 wired client by default so the reducer
+  // doesn't trip into `.notWiredToAnyClient` for unrelated branches.
+  clientDetect: { total: 4, wiredCount: 1, wiredLabels: ["Cursor"] },
   activePredictions: [],
   preparedWork: [],
   noAgentSuggestions: [],
   paused: false,
+  // Ollama is the local-first default backend. Default to "installed
+  // and running" so unrelated branches don't trip into
+  // `.ollamaMissing`; the dedicated tests below override.
+  ollamaHealth: { installed: true, running: true, detail: "" },
   ...override,
 });
 
@@ -126,8 +133,91 @@ const fakeAgent = (id: string): AgentSuggestion => ({
 // ---------- tests ----------
 
 describe("StateReducer precedence chain", () => {
-  it("engine unreachable → .error", () => {
+  it("CLI missing wins over no-clients-wired (install before integrate)", () => {
+    const out = reduce(
+      baseInputs({
+        status: reachableStatus({ cliMissing: true }),
+        clientDetect: { total: 4, wiredCount: 0, wiredLabels: [] },
+      }),
+    );
+    expect(out.kind).toBe("notInstalled");
+  });
+
+  it("CLI installed but no client wired → .notWiredToAnyClient", () => {
+    const out = reduce(
+      baseInputs({
+        clientDetect: { total: 4, wiredCount: 0, wiredLabels: [] },
+      }),
+    );
+    expect(out.kind).toBe("notWiredToAnyClient");
+  });
+
+  it("detector hasn't completed (total=0) — show .notWiredToAnyClient, not .error", () => {
+    // Production-mode flip: with auto-bring-up disabled, a daemon
+    // being unreachable is the EXPECTED state until a client invokes
+    // `vaner mcp`. Briefly showing the "wire a client" panel during
+    // the half-second the probe takes to complete is preferable to
+    // flashing a scary engine-error.
+    const out = reduce(
+      baseInputs({
+        clientDetect: { total: 0, wiredCount: 0, wiredLabels: [] },
+        status: reachableStatus({ reachable: false }),
+      }),
+    );
+    expect(out.kind).toBe("notWiredToAnyClient");
+  });
+
+  it("clients wired but engine unreachable → .error (now actionable)", () => {
+    const out = reduce(
+      baseInputs({
+        clientDetect: { total: 4, wiredCount: 1, wiredLabels: ["Cursor"] },
+        status: reachableStatus({ reachable: false }),
+      }),
+    );
+    expect(out.kind).toBe("error");
+  });
+
+  it("engine unreachable with default (wired) inputs → .error", () => {
     const out = reduce(baseInputs({ status: reachableStatus({ reachable: false }) }));
+    expect(out.kind).toBe("error");
+  });
+
+  it("Ollama not installed → .ollamaMissing (overrides engine error)", () => {
+    // Wired clients + engine unreachable would normally → .error;
+    // .ollamaMissing should win because it names the actual cause.
+    const out = reduce(
+      baseInputs({
+        status: reachableStatus({ reachable: false }),
+        ollamaHealth: { installed: false, running: false, detail: "Ollama isn't installed." },
+      }),
+    );
+    expect(out.kind).toBe("ollamaMissing");
+    if (out.kind === "ollamaMissing") {
+      expect(out.installed).toBe(false);
+      expect(out.detail).toContain("Ollama");
+    }
+  });
+
+  it("Ollama present but cliMissing wins → .notInstalled", () => {
+    // The Vaner CLI itself missing is a more fundamental problem
+    // than Ollama being absent — keep .notInstalled at the top of
+    // the precedence chain.
+    const out = reduce(
+      baseInputs({
+        status: reachableStatus({ cliMissing: true, reachable: false }),
+        ollamaHealth: { installed: false, running: false, detail: "" },
+      }),
+    );
+    expect(out.kind).toBe("notInstalled");
+  });
+
+  it("Ollama installed but the cockpit is silent → .error (engine, not Ollama)", () => {
+    const out = reduce(
+      baseInputs({
+        status: reachableStatus({ reachable: false }),
+        ollamaHealth: { installed: true, running: true, detail: "" },
+      }),
+    );
     expect(out.kind).toBe("error");
   });
 
