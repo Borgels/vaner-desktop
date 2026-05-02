@@ -14,6 +14,10 @@ export interface ServiceStatus {
   state: ServiceState;
   workspace?: string;
   unit_path: string;
+  /** Whether the user manager keeps running across logout (i.e.
+   *  `loginctl enable-linger` was applied). Without this, the service
+   *  stops as soon as the user logs out. */
+  linger_enabled: boolean;
   detail?: string;
 }
 
@@ -45,6 +49,16 @@ export async function installEngineService(): Promise<ServiceStatus> {
  *  Missing service is a no-op. */
 export async function uninstallEngineService(): Promise<ServiceStatus> {
   const status = await invoke<ServiceStatus>("engine_service_uninstall");
+  internal.set(status);
+  return status;
+}
+
+/** Toggle `loginctl enable-linger / disable-linger` for the current
+ *  user via `pkexec` (graphical polkit prompt). Without linger, the
+ *  service stops on logout; with linger, it survives across reboots
+ *  even when the user isn't logged in graphically. */
+export async function setEngineServiceLinger(enable: boolean): Promise<ServiceStatus> {
+  const status = await invoke<ServiceStatus>("engine_service_set_linger", { enable });
   internal.set(status);
   return status;
 }

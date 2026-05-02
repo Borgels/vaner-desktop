@@ -11,11 +11,16 @@
 //!
 //! Tauri commands:
 //!   - [`engine_service_status`] — what the unit looks like right now
-//!     (`Missing` / `Disabled` / `Enabled` / `Active`).
+//!     (`Missing` / `Disabled` / `Enabled` / `Active`), plus the
+//!     linger flag (whether the user-manager survives logout).
 //!   - [`engine_service_install`] — write the unit, daemon-reload,
 //!     `enable --now`. Refuses if no workspace is set.
 //!   - [`engine_service_uninstall`] — `disable --now`, remove the unit
 //!     file, daemon-reload. Idempotent (no-op if missing).
+//!   - [`engine_service_set_linger`] — toggle `loginctl enable-linger
+//!     / disable-linger` for the current user via pkexec (graphical
+//!     polkit prompt). Without linger, the user manager exits on
+//!     logout and the engine stops with it.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -53,6 +58,12 @@ pub struct ServiceStatus {
     pub workspace: Option<String>,
     /// Path to the unit file (whether or not it currently exists).
     pub unit_path: String,
+    /// Whether the user manager keeps running after logout. Without
+    /// this, an `enabled --now` unit stops as soon as the user logs
+    /// out and only restarts when they next log in graphically. The
+    /// canonical signal is the existence of
+    /// `/var/lib/systemd/linger/<user>`.
+    pub linger_enabled: bool,
     /// Human-readable detail for error toasts.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
@@ -132,16 +143,35 @@ fn read_workspace_from_unit(path: &Path) -> Option<String> {
     None
 }
 
+/// Probe linger via the canonical filesystem signal:
+/// `/var/lib/systemd/linger/<user>` is created by `loginctl
+/// enable-linger` and removed by `disable-linger`. We check this
+/// directly rather than parsing `loginctl show-user` output because
+/// the signal exists even on minimal systems where the loginctl
+/// binary might be missing or the dbus call would fail in a
+/// container.
+fn linger_probe() -> bool {
+    let Ok(user) = std::env::var("USER") else {
+        return false;
+    };
+    if user.is_empty() {
+        return false;
+    }
+    Path::new("/var/lib/systemd/linger").join(&user).exists()
+}
+
 #[tauri::command]
 pub async fn engine_service_status() -> Result<ServiceStatus, String> {
     let path = unit_path().ok_or_else(|| "could not resolve $HOME".to_string())?;
     let path_str = path.to_string_lossy().into_owned();
+    let linger_enabled = linger_probe();
 
     if !systemctl_available().await {
         return Ok(ServiceStatus {
             state: ServiceState::Unavailable,
             workspace: None,
             unit_path: path_str,
+            linger_enabled,
             detail: Some(
                 "systemctl --user is unavailable on this session — the engine will only run while the desktop is open.".to_string(),
             ),
@@ -154,6 +184,7 @@ pub async fn engine_service_status() -> Result<ServiceStatus, String> {
             state: ServiceState::Missing,
             workspace,
             unit_path: path_str,
+            linger_enabled,
             detail: None,
         });
     }
@@ -174,6 +205,7 @@ pub async fn engine_service_status() -> Result<ServiceStatus, String> {
         state,
         workspace,
         unit_path: path_str,
+        linger_enabled,
         detail: None,
     })
 }
@@ -264,5 +296,72 @@ pub async fn engine_service_uninstall() -> Result<ServiceStatus, String> {
     if systemctl_available().await {
         let _ = systemctl_user(&["daemon-reload"]).await;
     }
+    engine_service_status().await
+}
+
+/// Toggle `loginctl enable-linger / disable-linger` for the current
+/// user. Without linger, the per-user systemd manager exits when the
+/// user logs out, taking `vaner-engine.service` with it; the unit
+/// only restarts when the user logs back in graphically. With linger
+/// enabled, the user manager keeps running across reboots and the
+/// engine survives logout. This is the right setting if the user
+/// wants Vaner indexing in the background even when they're away.
+///
+/// `loginctl enable-linger` requires `auth_admin` from polkit by
+/// default (action `org.freedesktop.login1.set-self-linger`), so we
+/// shell `pkexec` to surface a graphical password prompt via the
+/// session's polkit agent. Falls back to a clear error when pkexec
+/// isn't installed (some headless distros, containers).
+#[tauri::command]
+pub async fn engine_service_set_linger(enable: bool) -> Result<ServiceStatus, String> {
+    let user = std::env::var("USER").map_err(|_| "USER env var not set".to_string())?;
+    if user.is_empty() {
+        return Err("USER env var is empty".to_string());
+    }
+
+    if which::which("loginctl").is_err() {
+        return Err(
+            "loginctl is not installed; cannot toggle linger on this system.".to_string(),
+        );
+    }
+    if which::which("pkexec").is_err() {
+        return Err(format!(
+            "pkexec is required to toggle linger but isn't installed.\n\
+             Run this manually instead:\n  sudo loginctl {} {}",
+            if enable { "enable-linger" } else { "disable-linger" },
+            user
+        ));
+    }
+
+    let action = if enable { "enable-linger" } else { "disable-linger" };
+    let output = Command::new("pkexec")
+        .arg("loginctl")
+        .arg(action)
+        .arg(&user)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| format!("could not spawn pkexec: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        // pkexec exits 126 when the user dismissed the prompt; surface
+        // a kinder message than the raw "Authorization failed" so a
+        // cancelled click looks like a cancellation, not a bug.
+        if output.status.code() == Some(126) {
+            return Err("Authorization cancelled.".to_string());
+        }
+        return Err(if stderr.is_empty() {
+            format!(
+                "loginctl {} exited with code {}",
+                action,
+                output.status.code().unwrap_or(-1)
+            )
+        } else {
+            stderr
+        });
+    }
+
     engine_service_status().await
 }

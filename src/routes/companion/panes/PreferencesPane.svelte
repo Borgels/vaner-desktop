@@ -25,6 +25,7 @@
     engineService,
     installEngineService,
     loadEngineServiceStatus,
+    setEngineServiceLinger,
     uninstallEngineService,
     type ServiceState,
   } from "$lib/stores/engine-service.js";
@@ -137,6 +138,29 @@
     }
   }
 
+  let lingerBusy = $state(false);
+  async function onLingerToggleClick(target: boolean) {
+    if (lingerBusy) return;
+    lingerBusy = true;
+    try {
+      const status = await setEngineServiceLinger(target);
+      showToast(
+        status.linger_enabled
+          ? "Linger enabled — the engine will keep running across logout."
+          : "Linger disabled — the engine will stop on logout.",
+        "success",
+        3500,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : `Linger toggle failed: ${err}`;
+      showToast(msg, "attention", 5000);
+      // pkexec may have changed nothing on cancel — re-sync to be sure.
+      await loadEngineServiceStatus();
+    } finally {
+      lingerBusy = false;
+    }
+  }
+
   onMount(() => {
     loadStatus();
     loadHardware();
@@ -220,6 +244,7 @@
     {@const svc = $engineService}
     {@const checked = svc.state === "active" || svc.state === "enabled"}
     {@const disabled = serviceBusy || svc.state === "unavailable"}
+    {@const serviceInstalled = svc.state !== "missing" && svc.state !== "unavailable"}
     <label class="row" class:dim={disabled}>
       <input
         type="checkbox"
@@ -230,11 +255,35 @@
       <span class="row-text">
         <span class="row-title">Run engine in the background (systemd)</span>
         <span class="row-detail">{describeServiceState(svc.state)}</span>
-        {#if svc.workspace && svc.state !== "missing" && svc.state !== "unavailable"}
+        {#if svc.workspace && serviceInstalled}
           <span class="row-detail">Targeting <code>{svc.workspace}</code> · unit at <code>{svc.unit_path}</code>.</span>
         {/if}
       </span>
     </label>
+
+    {#if serviceInstalled}
+      <label class="row" class:dim={lingerBusy}>
+        <input
+          type="checkbox"
+          checked={svc.linger_enabled}
+          disabled={lingerBusy}
+          onchange={(e) => onLingerToggleClick((e.currentTarget as HTMLInputElement).checked)}
+        />
+        <span class="row-text">
+          <span class="row-title">Keep the engine running after logout (linger)</span>
+          <span class="row-detail">
+            {#if svc.linger_enabled}
+              The user manager survives logout, so Vaner keeps indexing across reboots and lock screens.
+            {:else}
+              The engine stops as soon as you log out and restarts on next login. Toggle on if you want it indexing in the background even when you're away.
+            {/if}
+          </span>
+          <span class="row-detail">
+            Toggling triggers a graphical password prompt (polkit) to run <code>loginctl {svc.linger_enabled ? "disable-linger" : "enable-linger"}</code>.
+          </span>
+        </span>
+      </label>
+    {/if}
   {/if}
 </div>
 

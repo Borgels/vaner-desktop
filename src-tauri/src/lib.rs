@@ -166,6 +166,7 @@ pub fn run() {
             engine_service::engine_service_status,
             engine_service::engine_service_install,
             engine_service::engine_service_uninstall,
+            engine_service::engine_service_set_linger,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
