@@ -1,5 +1,111 @@
 # Changelog
 
+## [0.2.4] - 2026-05-02
+
+### Added
+
+- **Single-source engine status** — one Rust-side poll loop now owns the
+  cadence (5 s base, 500 ms during a boost window after Restart) and
+  emits `engine:status` events to every webview. The popover and the
+  companion Engine pane subscribe to the same event channel, so they
+  can no longer disagree about whether the engine is up. Pre-fix each
+  webview ran its own `setInterval`; a stale stub in the companion
+  could happily contradict a fresh probe in the popover.
+- **`.ollamaMissing` popover state + in-app installer** — Vaner's
+  default backend is Ollama on `127.0.0.1:11434`; if it isn't installed
+  the model loop 502s on every MCP call. The popover now names the
+  *cause* ("Ollama is missing") rather than the *symptom* ("engine
+  unavailable"), with a primary CTA that launches `curl -fsSL
+  https://ollama.com/install.sh | sh` inside a real terminal so the
+  sudo prompt + layer progress are visible to the user. Falls through
+  the `gnome-terminal → konsole → xfce4-terminal → kitty → alacritty
+  → foot → xterm` lookup order.
+- **Onboarding "select clients to wire" UX** — the wizard's "Vaner is
+  ready" slide now shows one checkbox per detected client, pre-checked
+  for any client that isn't already `ready`. Already-wired clients
+  show a ✓ + "Already wired" muted line — no checkbox, no action.
+  Single primary "Install Vaner into N agent(s)" button at the bottom;
+  per-client failures surface their own toast without aborting the
+  bulk run. After the bulk install, the panel flips to the verify
+  view in-place so the user sees status badges + verification phrase
+  for any partials.
+- **Companion → Agents pane: per-layer status** — embeds the same
+  leverage panel from onboarding (MCP / Primer / Skill / Plugin per
+  client) alongside the existing install/uninstall list. Per-row
+  refresh on Repair, no more reloading the whole table.
+- **Docs deep-links** — every companion pane header has a "Docs ↗"
+  pill that opens the matching docs.vaner.ai page (Prepared, Agents,
+  Models, Engine, Preferences, Diagnostics).
+- **GPU-gated runtime presets** — Light / Balanced / Performance now
+  write `compute.idle_gpu_threshold` (the meaningful gate for a
+  GPU-bound loop) in addition to `compute.idle_cpu_threshold`. CPU
+  fraction stays as a runaway-loop ceiling, not the dimension that
+  decides preset.
+- **Companion-window geometry persistence** — `state.json` carries
+  the last position + size; the companion lands where you left it.
+- **Open Vaner button on completion** — actually opens the companion
+  before closing onboarding (was: closed onboarding into an empty
+  desktop).
+
+### Changed
+
+- **Popover reframe when no workspace is set** — pre-fix the popover
+  shouted "ENGINE UNAVAILABLE" any time the cockpit was silent. After
+  setup a daemon legitimately isn't running until an MCP client calls
+  it, so the new copy is "Vaner is set up. The engine starts when
+  your first agent calls it. Open Cursor / Claude Code / Zed in a
+  repo and Vaner kicks in." The scary copy stays only when a workspace
+  IS persisted and the engine genuinely flopped.
+- **Friendly preset / bundle / tier labels** — `local_balanced`,
+  `high_performance`, etc. are no longer surfaced as raw enum strings.
+- **Hydration skeleton on the Models pane** — picker shows a greyed-
+  out skeleton until `loadBackendConfig` resolves; no more "nothing
+  selected for two seconds, then it pops in" flicker.
+- **Engine-pane preset highlight by behaviour** — `classifyPreset` now
+  matches by `idle_only` + `max_cycle_seconds` instead of exact
+  `cpu_fraction` values, so the preset the wizard wrote highlights as
+  "Balanced" instead of falling through to "no preset selected".
+- **Helper text trimmed** across Engine / Models / Preferences. Long
+  prose pushed to docs.vaner.ai via the new DocsLink pill.
+
+### Fixed
+
+- **Popover ↔ companion engine-state drift** — the headline architecture
+  fix (see Added). On fresh installs the companion's Engine pane was
+  showing "Running ✓" while the popover showed "ENGINE UNAVAILABLE",
+  same engine, same instant. Resolved by routing all reads through the
+  Rust-side cache.
+- **`tauri-plugin-positioner` zbus-executor panic** — `Tray position
+  not set` at `ext.rs:301:17` printed a stack trace to stderr on every
+  popover open under SNI panels that don't report tray geometry. Skip
+  `Position::TrayBottomCenter` entirely on Linux (the fallback
+  monitor-edge placement was the deterministic landing zone anyway)
+  and install a panic hook that swallows that specific message.
+- **`bring_up_engine` no longer pretends `$HOME` is a repo** — pre-fix
+  the Restart-engine button asked the daemon to mkdir `/.vaner` and
+  watch it explode. Returns `NoWorkspace` cleanly when the user hasn't
+  picked one.
+- **`set_local_model` passes `--path`** — the Models pane's "switch
+  to model X" stopped breaking when launched from a `.desktop` entry
+  whose cwd is `/`.
+- **Setup wizard "Save Vaner settings" lands on first try** — the wizard
+  now resolves the workspace via the same `repo_root_arg()` helper
+  the engine uses, so first-install completion no longer races the
+  workspace probe.
+
+### Internal
+
+- New stores: `ollama-health.ts`, `daemon-audit.ts`. New components:
+  `OllamaMissing.svelte`, `StrayDaemonsBanner.svelte`,
+  `NotWiredToAnyClient.svelte`, `DocsLink.svelte`. New Rust modules:
+  `engine_status_task.rs`, `ollama_health_task.rs`, `daemon_audit.rs`.
+- Reducer: 24 / 24 unit tests passing including the three new Ollama-
+  precedence cases (Ollama-missing overrides engine-error,
+  cliMissing wins over Ollama-missing, Ollama-present-but-cockpit-
+  silent stays as `.error`).
+- `cargo clippy --all-targets -- -D warnings` clean; `cargo fmt --check`
+  clean; `pnpm check` 0 errors; `pnpm test -- --run` 24 / 24.
+
 ## [0.2.3] - 2026-05-01
 
 ### Fixed
