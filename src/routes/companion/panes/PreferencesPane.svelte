@@ -27,6 +27,14 @@
     pickWorkspace,
     workspacePath,
   } from "$lib/stores/workspace.js";
+  import {
+    engineService,
+    installEngineService,
+    loadEngineServiceStatus,
+    setEngineServiceLinger,
+    uninstallEngineService,
+    type ServiceState,
+  } from "$lib/stores/engine-service.js";
 
   // Silent-hours window — From / To, weekdays-only. Persisted to
   // localStorage for v0.2.2 alongside the simple `silentHours` toggle
@@ -115,6 +123,74 @@
     }
   }
 
+  let serviceBusy = $state(false);
+  function describeServiceState(state: ServiceState | undefined): string {
+    switch (state) {
+      case "active":
+        return "Running in the background. Survives desktop close + login restart.";
+      case "enabled":
+        return "Enabled but not currently running. systemd will start it on next login.";
+      case "disabled":
+        return "Unit installed but disabled. Toggle on to bring it up.";
+      case "missing":
+        return "Not installed. Toggle on to install + enable + start the unit.";
+      case "unavailable":
+        return "systemctl --user is unavailable on this session — enable Linger or use the auto-start fallback while the desktop is open.";
+      default:
+        return "Checking…";
+    }
+  }
+  async function onServiceToggleClick(target: boolean) {
+    if (serviceBusy) return;
+    serviceBusy = true;
+    try {
+      if (target) {
+        const status = await installEngineService();
+        showToast(
+          status.state === "active" ? "Background engine service started." : "Background engine service installed.",
+          "success",
+          3500,
+        );
+      } else {
+        await uninstallEngineService();
+        showToast("Background engine service stopped + removed.", "success", 3000);
+      }
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : `Service action failed: ${err}`,
+        "attention",
+        5000,
+      );
+      // Re-sync from disk in case install partially succeeded.
+      await loadEngineServiceStatus();
+    } finally {
+      serviceBusy = false;
+    }
+  }
+
+  let lingerBusy = $state(false);
+  async function onLingerToggleClick(target: boolean) {
+    if (lingerBusy) return;
+    lingerBusy = true;
+    try {
+      const status = await setEngineServiceLinger(target);
+      showToast(
+        status.linger_enabled
+          ? "Linger enabled — the engine will keep running across logout."
+          : "Linger disabled — the engine will stop on logout.",
+        "success",
+        3500,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : `Linger toggle failed: ${err}`;
+      showToast(msg, "attention", 5000);
+      // pkexec may have changed nothing on cancel — re-sync to be sure.
+      await loadEngineServiceStatus();
+    } finally {
+      lingerBusy = false;
+    }
+  }
+
   onMount(() => {
     loadStatus();
     loadHardware();
@@ -123,6 +199,7 @@
     // companion window mounts independently, so hydrate here too
     // to surface the actual current path instead of "(none)".
     loadWorkspace();
+    loadEngineServiceStatus();
   });
 
   const bundle = $derived($setup.bundle);
@@ -221,6 +298,52 @@
       <span class="row-detail">Drops an XDG autostart entry under <code>~/.config/autostart/</code> on toggle. Daemon-side wiring lands in v0.2.3.</span>
     </span>
   </label>
+
+  {#if $engineService}
+    {@const svc = $engineService}
+    {@const checked = svc.state === "active" || svc.state === "enabled"}
+    {@const disabled = serviceBusy || svc.state === "unavailable"}
+    {@const serviceInstalled = svc.state !== "missing" && svc.state !== "unavailable"}
+    <label class="row" class:dim={disabled}>
+      <input
+        type="checkbox"
+        {checked}
+        {disabled}
+        onchange={(e) => onServiceToggleClick((e.currentTarget as HTMLInputElement).checked)}
+      />
+      <span class="row-text">
+        <span class="row-title">Run engine in the background (systemd)</span>
+        <span class="row-detail">{describeServiceState(svc.state)}</span>
+        {#if svc.workspace && serviceInstalled}
+          <span class="row-detail">Targeting <code>{svc.workspace}</code> · unit at <code>{svc.unit_path}</code>.</span>
+        {/if}
+      </span>
+    </label>
+
+    {#if serviceInstalled}
+      <label class="row" class:dim={lingerBusy}>
+        <input
+          type="checkbox"
+          checked={svc.linger_enabled}
+          disabled={lingerBusy}
+          onchange={(e) => onLingerToggleClick((e.currentTarget as HTMLInputElement).checked)}
+        />
+        <span class="row-text">
+          <span class="row-title">Keep the engine running after logout (linger)</span>
+          <span class="row-detail">
+            {#if svc.linger_enabled}
+              The user manager survives logout, so Vaner keeps indexing across reboots and lock screens.
+            {:else}
+              The engine stops as soon as you log out and restarts on next login. Toggle on if you want it indexing in the background even when you're away.
+            {/if}
+          </span>
+          <span class="row-detail">
+            Toggling triggers a graphical password prompt (polkit) to run <code>loginctl {svc.linger_enabled ? "disable-linger" : "enable-linger"}</code>.
+          </span>
+        </span>
+      </label>
+    {/if}
+  {/if}
 </div>
 
 <!-- Memory -->
