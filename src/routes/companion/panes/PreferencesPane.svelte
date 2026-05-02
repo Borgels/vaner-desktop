@@ -21,6 +21,11 @@
   import { setup, loadStatus, loadHardware, loadPolicy } from "$lib/stores/setup.js";
   import { silentHours } from "$lib/stores/silent-hours.js";
   import { showToast } from "$lib/stores/toast.js";
+  import {
+    loadWorkspace,
+    pickWorkspace,
+    workspacePath,
+  } from "$lib/stores/workspace.js";
 
   // Silent-hours window — From / To, weekdays-only. Persisted to
   // localStorage for v0.2.2 alongside the simple `silentHours` toggle
@@ -85,10 +90,38 @@
     showToast("Memory cleared on UI; daemon-side wipe pending v0.2.3.", "info", 3500);
   }
 
+  let pickingWorkspace = $state(false);
+  async function changeWorkspace() {
+    if (pickingWorkspace) return;
+    pickingWorkspace = true;
+    try {
+      const next = await pickWorkspace();
+      if (next) {
+        showToast(
+          `Workspace set to ${next}. Restart the engine for the change to take effect.`,
+          "success",
+          5000,
+        );
+      }
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : `Could not change workspace: ${err}`,
+        "attention",
+        4000,
+      );
+    } finally {
+      pickingWorkspace = false;
+    }
+  }
+
   onMount(() => {
     loadStatus();
     loadHardware();
     loadPolicy();
+    // The popover hydrates the workspace store on its own; the
+    // companion window mounts independently, so hydrate here too
+    // to surface the actual current path instead of "(none)".
+    loadWorkspace();
   });
 
   const bundle = $derived($setup.bundle);
@@ -119,6 +152,28 @@
   {:else}
     <p class="muted">Loading bundle…</p>
   {/if}
+</div>
+
+<!-- Workspace -->
+<div class="card">
+  <div class="card-head"><span class="rail" style="background: var(--vd-amber);"></span><span>Workspace</span></div>
+  <V1Body
+    muted
+    text="The repository Vaner watches and indexes. Every CLI invocation (vaner up / status / setup) targets this path."
+  />
+  <div class="workspace-row">
+    {#if $workspacePath}
+      <code class="workspace-path">{$workspacePath}</code>
+    {:else}
+      <span class="workspace-empty">No workspace selected.</span>
+    {/if}
+  </div>
+  <div class="actions">
+    <V1GhostButton
+      title={pickingWorkspace ? "Opening…" : $workspacePath ? "Change…" : "Pick a folder…"}
+      onclick={changeWorkspace}
+    />
+  </div>
 </div>
 
 <!-- Silent hours -->
@@ -351,5 +406,33 @@
     font-size: 12px;
     color: var(--vd-fg-2);
     line-height: 1.5;
+  }
+  .workspace-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .workspace-path {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: var(--vd-font-mono);
+    font-size: 12px;
+    color: var(--vd-fg-1);
+    background: rgba(255, 255, 255, 0.04);
+    border: 0.5px solid var(--vd-hair);
+    border-radius: 6px;
+    padding: 6px 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .workspace-empty {
+    flex: 1 1 auto;
+    font-size: 12px;
+    color: var(--vd-fg-3);
+    font-style: italic;
   }
 </style>
