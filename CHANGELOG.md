@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **macOS .dmg in the release workflow** — `build-macos` job (macos-14, Apple Silicon runner, `tauri build --bundles dmg --target universal-apple-darwin`) produces a universal-2 .dmg that runs on both arm64 and x86_64 Macs. Wired into the staging + signing + release-publish steps; SHA256SUMS covers the .dmg too. Tauri's auto-updater `latest.json` carries a `darwin-universal` block when a minisign sig is present (TAURI_SIGNING_PRIVATE_KEY set).
+- The macOS build runs unsigned by default — sets `APPLE_*` env vars from optional repo secrets so users can flip on Developer ID signing + notarization later without touching the workflow. Until those are set, the .dmg ships unsigned and users see "Apple cannot verify Vaner.app" on first launch (right-click → Open to bypass).
+- **Winget manifest triple** at `winget/manifests/v/Vaner/Desktop/0.2.4/` — version, installer, en-US locale. Pinned to the published sha256 of `vaner-desktop_0.2.4_x64-setup.exe`. PR target is `microsoft/winget-pkgs`.
+
 ## [0.2.4] - 2026-05-02
 
 ### Added

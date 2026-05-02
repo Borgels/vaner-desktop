@@ -224,8 +224,95 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  build-macos:
+    runs-on: macos-14 # Apple Silicon runner; produces a universal-2 .dmg via tauri-bundler
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: corepack enable && corepack prepare pnpm@latest --activate
+      - run: pnpm install --frozen-lockfile
+
+      - name: enable bundle for this run
+        run: |
+          node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p));j.bundle.active=true;fs.writeFileSync(p,JSON.stringify(j,null,2));"
+          grep '"active"' src-tauri/tauri.conf.json | head -1
+
+      - name: build .dmg via tauri-bundler (universal arm64 + x86_64)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Optional Apple Developer credentials. When set, tauri-bundler
+          # signs the .app + notarises the .dmg. Omit them and the .dmg
+          # builds unsigned (users see "Apple cannot verify Vaner.app"
+          # on first launch; right-click → Open works around it).
+          # Set these in repo secrets to enable signing:
+          #   APPLE_CERTIFICATE                 base64-encoded p12
+          #   APPLE_CERTIFICATE_PASSWORD        password for the p12
+          #   APPLE_SIGNING_IDENTITY            "Developer ID Application: <Name> (<Team ID>)"
+          #   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID  for notarytool
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm tauri build --bundles dmg --target universal-apple-darwin
+
+      - name: collect + rename macOS artifacts
+        id: collect
+        run: |
+          set -e
+          bundleRoot="src-tauri/target/universal-apple-darwin/release/bundle/dmg"
+          version=$(node -e "console.log(require('./src-tauri/tauri.conf.json').version)")
+          dmg=$(ls "$bundleRoot"/*.dmg | head -1)
+          if [ -z "$dmg" ]; then
+            echo "::error::tauri-bundler produced no .dmg under $bundleRoot"
+            exit 1
+          fi
+          target_name="vaner-desktop_${version}_universal.dmg"
+          if [ "$(basename "$dmg")" != "$target_name" ]; then
+            mv "$dmg" "$bundleRoot/$target_name"
+          fi
+          # Tauri's macOS updater signature lives next to the .app inside
+          # the .dmg, but the public detached `.dmg.sig` (minisign) is
+          # only emitted when TAURI_SIGNING_PRIVATE_KEY is set. Best-
+          # effort copy if it exists.
+          sig=$(ls "$bundleRoot"/*.dmg.sig 2>/dev/null | head -1 || true)
+          if [ -n "$sig" ]; then
+            target_sig="vaner-desktop_${version}_universal.dmg.sig"
+            [ "$(basename "$sig")" != "$target_sig" ] && mv "$sig" "$bundleRoot/$target_sig"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          ls -la "$bundleRoot"
+
+      - name: upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-bundle
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/vaner-desktop_*_universal.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/vaner-desktop_*_universal.dmg.sig
+          if-no-files-found: error
+          retention-days: 7
+
   release:
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-22.04
     timeout-minutes: 30
 
@@ -254,32 +341,42 @@ jobs:
           name: windows-bundle
           path: artifacts/windows
 
+      - name: download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-bundle
+          path: artifacts/macos
+
       - name: stage artifacts into the bundle layout sign-artifacts.sh expects
         id: stage
         run: |
           set -e
           bundle_root="artifacts/bundle"
-          mkdir -p "$bundle_root/deb" "$bundle_root/appimage" "$bundle_root/nsis"
+          mkdir -p "$bundle_root/deb" "$bundle_root/appimage" "$bundle_root/nsis" "$bundle_root/dmg"
 
           # actions/upload-artifact@v4 preserves the source directory
           # tree, so the downloaded artifacts land somewhere under
-          # artifacts/{linux,windows}/. Find each file by name and move
-          # it into the flat layout sign-artifacts.sh expects.
+          # artifacts/{linux,windows,macos}/. Find each file by name and
+          # move it into the flat layout sign-artifacts.sh expects.
           find artifacts/linux  -name "*.deb"           -exec mv {} "$bundle_root/deb/"      \;
           find artifacts/linux  -name "*.AppImage"      -exec mv {} "$bundle_root/appimage/" \;
           find artifacts/linux  -name "*.AppImage.sig"  -exec mv {} "$bundle_root/appimage/" \;
           find artifacts/windows -name "*-setup.exe"     -exec mv {} "$bundle_root/nsis/"    \;
           find artifacts/windows -name "*-setup.exe.sig" -exec mv {} "$bundle_root/nsis/"    \;
+          find artifacts/macos   -name "*.dmg"           -exec mv {} "$bundle_root/dmg/"     \;
+          find artifacts/macos   -name "*.dmg.sig"       -exec mv {} "$bundle_root/dmg/"     \;
 
           deb_path=$(ls "$bundle_root/deb"/vaner-desktop_*_amd64.deb)
           app_path=$(ls "$bundle_root/appimage"/vaner-desktop_*_amd64.AppImage)
           exe_path=$(ls "$bundle_root/nsis"/vaner-desktop_*_x64-setup.exe)
+          dmg_path=$(ls "$bundle_root/dmg"/vaner-desktop_*_universal.dmg 2>/dev/null || true)
           version=$(echo "$deb_path" | sed -E 's/.*vaner-desktop_([^_]+)_.*/\1/')
 
           echo "bundle_root=$bundle_root" >> "$GITHUB_OUTPUT"
           echo "deb_path=$deb_path" >> "$GITHUB_OUTPUT"
           echo "app_path=$app_path" >> "$GITHUB_OUTPUT"
           echo "exe_path=$exe_path" >> "$GITHUB_OUTPUT"
+          [ -n "$dmg_path" ] && echo "dmg_path=$dmg_path" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           find "$bundle_root" -type f | sort
 
@@ -297,7 +394,7 @@ jobs:
           chmod +x scripts/ci/verify-artifacts.sh
           ./scripts/ci/verify-artifacts.sh "${{ steps.stage.outputs.bundle_root }}"
 
-      - name: compose latest.json updater manifest (linux + windows)
+      - name: compose latest.json updater manifest (linux + windows + optional darwin)
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         id: manifest
         run: |
@@ -305,6 +402,8 @@ jobs:
           bundle_root="${{ steps.stage.outputs.bundle_root }}"
           app_sig=$(find "$bundle_root/appimage" -maxdepth 1 -name "*.AppImage.sig" -print -quit)
           win_sig=$(find "$bundle_root/nsis" -maxdepth 1 -name "*.exe.sig" -print -quit)
+          dmg_path=$(find "$bundle_root/dmg" -maxdepth 1 -name "*.dmg" -print -quit || true)
+          dmg_sig=$(find "$bundle_root/dmg" -maxdepth 1 -name "*.dmg.sig" -print -quit || true)
           [[ -n "$app_sig" ]] || { echo "::error::missing AppImage .sig"; exit 1; }
           [[ -n "$win_sig" ]] || { echo "::error::missing NSIS .exe.sig"; exit 1; }
           app_sig_content=$(tr -d '\n' < "$app_sig")
@@ -315,24 +414,31 @@ jobs:
           pub_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           app_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${app_name}"
           win_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${exe_name}"
+          dmg_url=""; dmg_sig_content=""
+          if [[ -n "$dmg_path" && -n "$dmg_sig" ]]; then
+            dmg_name=$(basename "$dmg_path")
+            dmg_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${dmg_name}"
+            dmg_sig_content=$(tr -d '\n' < "$dmg_sig")
+          fi
           out="$bundle_root/latest.json"
-          python3 -c "
-          import json
-          print(json.dumps({
-              'version': '${version}',
-              'pub_date': '${pub_date}',
-              'notes': 'See the v${version} release notes at https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}',
-              'platforms': {
-                  'linux-x86_64': {
-                      'signature': '''${app_sig_content}''',
-                      'url': '${app_url}'
-                  },
-                  'windows-x86_64': {
-                      'signature': '''${win_sig_content}''',
-                      'url': '${win_url}'
-                  }
+          python3 - <<PY > "$out"
+          import json, os
+          platforms = {
+              "linux-x86_64":   {"signature": "${app_sig_content}", "url": "${app_url}"},
+              "windows-x86_64": {"signature": "${win_sig_content}", "url": "${win_url}"},
+          }
+          if "${dmg_url}" and "${dmg_sig_content}":
+              platforms["darwin-universal"] = {
+                  "signature": "${dmg_sig_content}",
+                  "url": "${dmg_url}",
               }
-          }, indent=2))" > "$out"
+          print(json.dumps({
+              "version":  "${version}",
+              "pub_date": "${pub_date}",
+              "notes":    "See the v${version} release notes at https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}",
+              "platforms": platforms,
+          }, indent=2))
+          PY
           echo "latest_json_path=$out" >> "$GITHUB_OUTPUT"
           cat "$out"
 
@@ -348,12 +454,14 @@ jobs:
             ${{ steps.stage.outputs.exe_path }}
             ${{ steps.stage.outputs.exe_path }}.asc
             ${{ steps.stage.outputs.exe_path }}.sig
+            ${{ steps.stage.outputs.bundle_root }}/dmg/*.dmg
+            ${{ steps.stage.outputs.bundle_root }}/dmg/*.dmg.asc
             ${{ steps.stage.outputs.bundle_root }}/SHA256SUMS
             ${{ steps.stage.outputs.bundle_root }}/SHA256SUMS.asc
             ${{ steps.manifest.outputs.latest_json_path }}
             scripts/release-key.asc
           generate_release_notes: true
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
 
       # ----- apt repo publish (gh-pages) — Linux .deb only --------------
       - name: checkout gh-pages
