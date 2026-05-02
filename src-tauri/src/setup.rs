@@ -69,7 +69,7 @@ pub struct PolicyRefreshResult {
 }
 
 fn repo_root_arg() -> String {
-    std::env::var("VANER_PATH").unwrap_or_else(|_| ".".to_string())
+    crate::workspace::resolve_str()
 }
 
 async fn run_vaner_setup_json(

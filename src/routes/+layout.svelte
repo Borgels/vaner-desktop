@@ -6,7 +6,10 @@
   import { bootstrapAppStateListeners } from "$lib/stores/app-state.js";
   import { bootstrapUpdaterListeners } from "$lib/stores/updater.js";
   import { loadStatus } from "$lib/stores/setup.js";
+  import { loadWorkspace, workspacePath } from "$lib/stores/workspace.js";
+  import { get } from "svelte/store";
   import {
+    boostEngineStatusPolling,
     setSourcesCount,
     startEngineStatusPolling,
     stopEngineStatusPolling,
@@ -15,6 +18,17 @@
     startAgentDetectorPolling,
     stopAgentDetectorPolling,
   } from "$lib/stores/agent-detector.js";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { showToast } from "$lib/stores/toast.js";
+
+  type BringUpOutcome = "already_running" | "started" | "failed" | "no_workspace";
+  type BringUpEvent = {
+    outcome: BringUpOutcome;
+    workspace: string | null;
+    detail: string;
+  };
+
+  let bringUpUnlisten: UnlistenFn | null = null;
 
   let { children } = $props();
 
@@ -29,17 +43,45 @@
     bootstrapAppStateListeners();
     bootstrapUpdaterListeners();
 
+    // Listen for the startup auto-bring-up result. The Rust side
+    // shells `vaner up --detach` itself when the cockpit is down; we
+    // boost the engine_status poll to 500ms so the popover flips out
+    // of .error within half a second of cockpit-up, and surface a
+    // toast on failure so the user has something to act on.
+    bringUpUnlisten = await listen<BringUpEvent>("engine:bring-up", (event) => {
+      const result = event.payload;
+      if (result.outcome === "started") {
+        boostEngineStatusPolling(15_000);
+      } else if (result.outcome === "failed") {
+        boostEngineStatusPolling(15_000);
+        showToast(
+          result.detail || "Vaner could not start the engine.",
+          "attention",
+          5000,
+        );
+      }
+      // already_running and no_workspace are silent — the popover
+      // surfaces the right state on its own.
+    });
+
+    // Hydrate the workspace store before anything that shells the CLI.
+    // The reducer reads this synchronously to decide between
+    // .needsWorkspace and the rest of the chain; the engine-status
+    // poll downstream feeds `--path` from the same source.
+    await loadWorkspace();
+
     // Reducer-input polling. Both are idempotent; the popover survives
     // these returning errors (the stores keep their last value).
     startEngineStatusPolling();
     startAgentDetectorPolling();
 
     // First-run check: if no setup has completed, open the dedicated
-    // onboarding window. The popover keeps rendering its current state
-    // (engineMissing / installedNotConnected / etc.) while the user
-    // runs through onboarding in the second window. On completion the
-    // onboarding side calls close_onboarding and the layout never
-    // re-fires this branch.
+    // onboarding window. Gated on a workspace being picked — without
+    // one, `vaner setup show --path .` runs against the desktop's cwd
+    // (often /) and reports an empty [setup], firing onboarding on
+    // every launch. The .needsWorkspace popover state takes the user
+    // through the picker first.
+    if (!get(workspacePath)) return;
     try {
       const status = await loadStatus();
       const completedAt = status?.setup?.completed_at;
@@ -62,6 +104,7 @@
   onDestroy(() => {
     stopEngineStatusPolling();
     stopAgentDetectorPolling();
+    bringUpUnlisten?.();
   });
 </script>
 

@@ -50,6 +50,7 @@ const baseInputs = (override: Partial<ReducerInputs> = {}): ReducerInputs => ({
   anyAgentRunning: true,
   silentHours: false,
   hasAnySource: true,
+  workspaceMissing: false,
   activePredictions: [],
   preparedWork: [],
   noAgentSuggestions: [],
@@ -126,6 +127,20 @@ const fakeAgent = (id: string): AgentSuggestion => ({
 // ---------- tests ----------
 
 describe("StateReducer precedence chain", () => {
+  it("workspace not picked → .needsWorkspace (overrides every other branch)", () => {
+    // Even with the engine fully unreachable AND the CLI missing AND
+    // sources blocked, .needsWorkspace fires first — there's nothing
+    // for the user to do until they pick a folder.
+    const out = reduce(
+      baseInputs({
+        workspaceMissing: true,
+        status: reachableStatus({ reachable: false, cliMissing: true }),
+        blockedSources: [blockedSrc()],
+      }),
+    );
+    expect(out.kind).toBe("needsWorkspace");
+  });
+
   it("engine unreachable → .error", () => {
     const out = reduce(baseInputs({ status: reachableStatus({ reachable: false }) }));
     expect(out.kind).toBe("error");

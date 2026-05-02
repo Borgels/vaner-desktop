@@ -23,6 +23,7 @@ use tokio::sync::Mutex;
 use vaner_contract::HttpEngineClient;
 
 pub mod agent_detector;
+pub mod bring_up;
 pub mod clients;
 pub mod commands;
 pub mod companion;
@@ -38,6 +39,7 @@ pub mod sse_task;
 pub mod tray;
 pub mod updater;
 pub mod vaner_cli;
+pub mod workspace;
 
 /// Process-wide state. A single reqwest-backed HTTP client is shared
 /// across every `#[tauri::command]` so connection pooling works.
@@ -70,6 +72,20 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .setup(move |app| {
+            // Resolve the user's persisted workspace and export it as
+            // VANER_PATH so any helper that hasn't been migrated to
+            // crate::workspace::resolve* yet still sees a stable path.
+            // No-op when the user hasn't picked one yet — the popover
+            // surfaces the picker rather than firing onboarding.
+            workspace::export_to_env(app.handle());
+
+            // Auto-bring-up: probe the cockpit, and if it's down (and
+            // the user has picked a workspace), shell `vaner up
+            // --detach` ourselves. Background task — the app starts
+            // immediately and the popover reacts to the
+            // `engine:bring-up` event when it lands.
+            bring_up::spawn_at_startup(app.handle().clone());
+
             // Kick off the SSE snapshot stream; the Svelte store
             // listens on `predictions:snapshot`.
             let handle = sse_task::spawn(app.handle().clone(), engine.clone());
@@ -115,6 +131,8 @@ pub fn run() {
             commands::app_quit,
             commands::window_hide,
             updater::install_update,
+            updater::update_install_kind,
+            updater::update_open_release,
             popover::popover_toggle_pinned,
             popover::popover_is_pinned,
             diagnostics::diagnostics_status,
@@ -147,6 +165,10 @@ pub fn run() {
             ollama::ollama_pull,
             ollama::ollama_cancel_pull,
             ollama::ollama_remove,
+            workspace::workspace_get,
+            workspace::workspace_set,
+            workspace::workspace_pick,
+            bring_up::bring_up_engine,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

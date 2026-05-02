@@ -12,18 +12,42 @@
   import type { EngineError } from "$lib/state/types.js";
   import { invoke } from "@tauri-apps/api/core";
   import { showToast } from "$lib/stores/toast.js";
+  import { boostEngineStatusPolling } from "$lib/stores/engine-status.js";
 
   type Props = { engine: EngineError };
   const { engine }: Props = $props();
+
+  type BringUpOutcome = "already_running" | "started" | "failed" | "no_workspace";
+  type BringUpResult = {
+    outcome: BringUpOutcome;
+    workspace: string | null;
+    detail: string;
+  };
 
   let restarting = $state(false);
 
   async function restartEngine() {
     if (restarting) return;
     restarting = true;
+    // Boost the engine_status poll up front so the moment the cockpit
+    // answers we flip out of .error within 500ms, regardless of the
+    // bring-up RPC's own latency.
+    boostEngineStatusPolling(15_000);
     try {
-      const result = await invoke<string>("diagnostics_restart_engine");
-      showToast(result || "Vaner restart requested.", "success", 3500);
+      const result = await invoke<BringUpResult>("bring_up_engine");
+      if (result.outcome === "started" || result.outcome === "already_running") {
+        showToast(
+          result.outcome === "started" ? "Vaner engine started." : "Vaner engine already running.",
+          "success",
+          3000,
+        );
+      } else {
+        showToast(
+          result.detail || "Vaner could not start the engine.",
+          "attention",
+          5000,
+        );
+      }
     } catch (err) {
       showToast(
         err instanceof Error ? err.message : `Failed to restart Vaner: ${err}`,

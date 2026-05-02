@@ -3,10 +3,18 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { showToast } from "./toast.js";
 
+export type InstallKind = "deb" | "appimage" | "other";
+
 export interface UpdateInfo {
   version: string;
   currentVersion: string;
   notes?: string | null;
+  /** What format the running binary was installed as. The banner
+   *  branches on this — Tauri's Linux updater can only self-replace
+   *  AppImages, so `.deb` installs get a "Download .deb" CTA that
+   *  opens the release page rather than pretending the in-app
+   *  install will work. */
+  installKind: InstallKind;
 }
 
 /** `null` until a newer release is found. */
@@ -22,16 +30,19 @@ export async function bootstrapUpdaterListeners(): Promise<void> {
   booted = true;
 
   unlisteners.push(
-    await listen<{ version: string; current_version: string; release_notes: string | null }>(
-      "update:available",
-      ({ payload }) => {
-        availableUpdate.set({
-          version: payload.version,
-          currentVersion: payload.current_version,
-          notes: payload.release_notes,
-        });
-      },
-    ),
+    await listen<{
+      version: string;
+      current_version: string;
+      release_notes: string | null;
+      install_kind: InstallKind;
+    }>("update:available", ({ payload }) => {
+      availableUpdate.set({
+        version: payload.version,
+        currentVersion: payload.current_version,
+        notes: payload.release_notes,
+        installKind: payload.install_kind,
+      });
+    }),
   );
 
   unlisteners.push(
@@ -60,5 +71,17 @@ export async function installUpdate(): Promise<void> {
     updateProgress.set(null);
     const msg = typeof err === "string" ? err : "Update install failed.";
     showToast(msg, "attention", 5000);
+  }
+}
+
+/** Open the GitHub release page for `version`. Used by the banner's
+ *  "Download .deb" / "View release" CTA when the in-app updater can't
+ *  self-replace (most Linux installs that aren't AppImage). */
+export async function openReleasePage(version: string): Promise<void> {
+  try {
+    await invoke("update_open_release", { version });
+  } catch (err) {
+    const msg = typeof err === "string" ? err : "Could not open the release page.";
+    showToast(msg, "attention", 4000);
   }
 }

@@ -9,6 +9,7 @@
   import { startPreparedWorkPolling } from "$lib/stores/prepared-work.js";
   import { startPredictionStream } from "$lib/stores/predictions.js";
   import { vanerState } from "$lib/stores/vaner-state.js";
+  import NeedsWorkspace from "$lib/components/popover-states/NeedsWorkspace.svelte";
   import EngineMissing from "$lib/components/popover-states/EngineMissing.svelte";
   import NotInstalled from "$lib/components/popover-states/NotInstalled.svelte";
   import InstalledNotConnected from "$lib/components/popover-states/InstalledNotConnected.svelte";
@@ -41,7 +42,9 @@
 
   <UpdateBanner />
 
-  {#if $vanerState.kind === "engineMissing"}
+  {#if $vanerState.kind === "needsWorkspace"}
+    <NeedsWorkspace />
+  {:else if $vanerState.kind === "engineMissing"}
     <EngineMissing install={$vanerState.install} />
   {:else if $vanerState.kind === "notInstalled"}
     <NotInstalled />

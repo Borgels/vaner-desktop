@@ -26,6 +26,11 @@ export interface ReducerInputs {
   anyAgentRunning: boolean;
   silentHours: boolean;
   hasAnySource: boolean;
+  /** True when no workspace path has been picked yet. Lands the popover
+   *  on `.needsWorkspace` ahead of every other state — the desktop
+   *  cannot drive the CLI without a target repo, so showing
+   *  install/error/onboarding nudges first would be misleading. */
+  workspaceMissing: boolean;
   /** 0.8.0 prediction-centric pondering. Defaults to [] for callers
    *  that haven't been updated to the new shape. */
   activePredictions: PredictedPrompt[];
@@ -42,6 +47,15 @@ export interface ReducerInputs {
 }
 
 export function reduce(i: ReducerInputs): VanerState {
+  // 0. No workspace picked yet → .needsWorkspace. Comes before
+  //    .notInstalled because a missing CLI is moot if the desktop
+  //    doesn't even know which repo to install for. The picker is
+  //    the first action the user takes after the popover opens on
+  //    a fresh `.deb` install.
+  if (i.workspaceMissing) {
+    return { kind: "needsWorkspace" };
+  }
+
   // 1a. Vaner CLI itself isn't installed → .notInstalled. This MUST
   //     come before the unreachable branch: a fresh `vaner-desktop`
   //     install on a machine that's never seen the CLI would

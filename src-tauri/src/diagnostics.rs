@@ -2,17 +2,6 @@ use serde_json::Value;
 use std::process::Stdio;
 use tokio::process::Command;
 
-/// Repository root the desktop should target when shelling the CLI. The
-/// desktop process inherits its cwd from however it was launched (often
-/// `/` for `.deb` installs), so commands like `vaner up` would otherwise
-/// start a daemon for the wrong workspace and the popover stays in the
-/// error state even after a successful "Restart engine" click. Matches
-/// setup.rs's `repo_root_arg()` convention so all CLI invocations point
-/// at the same workspace; a proper workspace picker is the better fix.
-fn repo_root_arg() -> String {
-    std::env::var("VANER_PATH").unwrap_or_else(|_| ".".to_string())
-}
-
 async fn run_vaner(args: &[&str], allow_nonzero: bool) -> Result<String, String> {
     let bin = crate::vaner_cli::resolve_vaner_bin()?;
     let output = Command::new(&bin)
@@ -38,19 +27,21 @@ async fn run_vaner(args: &[&str], allow_nonzero: bool) -> Result<String, String>
 
 #[tauri::command]
 pub async fn diagnostics_status() -> Result<Value, String> {
-    let stdout = run_vaner(&["status", "--json"], true).await?;
+    let path = crate::workspace::resolve_str();
+    let stdout = run_vaner(&["status", "--json", "--path", &path], true).await?;
     serde_json::from_str::<Value>(&stdout).map_err(|e| format!("could not parse status JSON: {e}"))
 }
 
 #[tauri::command]
 pub async fn diagnostics_doctor() -> Result<Value, String> {
-    let stdout = run_vaner(&["doctor", "--json"], true).await?;
+    let path = crate::workspace::resolve_str();
+    let stdout = run_vaner(&["doctor", "--json", "--path", &path], true).await?;
     serde_json::from_str::<Value>(&stdout).map_err(|e| format!("could not parse doctor JSON: {e}"))
 }
 
 #[tauri::command]
 pub async fn diagnostics_restart_engine() -> Result<String, String> {
-    let path = repo_root_arg();
+    let path = crate::workspace::resolve_str();
     let _ = run_vaner(&["down", "--path", &path], true).await;
     run_vaner(&["up", "--detach", "--path", &path], true)
         .await
@@ -59,6 +50,8 @@ pub async fn diagnostics_restart_engine() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn diagnostics_upgrade_engine() -> Result<String, String> {
+    // `vaner upgrade` uses pipx/pip and doesn't take --path; it's a
+    // package-level operation, not a workspace one.
     run_vaner(&["upgrade"], true)
         .await
         .map(|_| "Vaner engine update finished.".to_string())
