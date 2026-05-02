@@ -153,12 +153,24 @@ pub enum ComputePreset {
 }
 
 impl ComputePreset {
-    fn settings(self) -> [(&'static str, &'static str); 5] {
+    /// Per-preset knob values. The presets are framed around the
+    /// thing Vaner actually consumes — GPU — rather than CPU.
+    /// The model loop runs the LLM (GPU-bound); the Python that
+    /// shepherds it is a rounding error on CPU. Pre-fix the presets
+    /// gated on `compute.idle_cpu_threshold`, which made "Light
+    /// pauses when you're using your machine" mean "Light pauses
+    /// when your CPU is busy" — wrong signal. Now the gating knob is
+    /// `compute.idle_gpu_threshold`. The CPU fraction is left at a
+    /// modest cap purely so a runaway loop can't peg every core in a
+    /// pathological worst case; it isn't the constraint that decides
+    /// Light vs Balanced vs Performance.
+    fn settings(self) -> [(&'static str, &'static str); 6] {
         match self {
             ComputePreset::Light => [
                 ("compute.cpu_fraction", "0.15"),
                 ("compute.gpu_memory_fraction", "0.25"),
                 ("compute.idle_only", "true"),
+                ("compute.idle_gpu_threshold", "0.3"),
                 ("compute.idle_cpu_threshold", "0.5"),
                 ("compute.max_cycle_seconds", "180"),
             ],
@@ -166,14 +178,16 @@ impl ComputePreset {
                 ("compute.cpu_fraction", "0.25"),
                 ("compute.gpu_memory_fraction", "0.4"),
                 ("compute.idle_only", "true"),
-                ("compute.idle_cpu_threshold", "0.6"),
+                ("compute.idle_gpu_threshold", "0.5"),
+                ("compute.idle_cpu_threshold", "0.7"),
                 ("compute.max_cycle_seconds", "300"),
             ],
             ComputePreset::Performance => [
                 ("compute.cpu_fraction", "0.5"),
                 ("compute.gpu_memory_fraction", "0.6"),
                 ("compute.idle_only", "false"),
-                ("compute.idle_cpu_threshold", "0.6"),
+                ("compute.idle_gpu_threshold", "0.9"),
+                ("compute.idle_cpu_threshold", "0.9"),
                 ("compute.max_cycle_seconds", "600"),
             ],
         }
