@@ -23,6 +23,7 @@ use tokio::sync::Mutex;
 use vaner_contract::HttpEngineClient;
 
 pub mod agent_detector;
+pub mod bring_up;
 pub mod clients;
 pub mod commands;
 pub mod companion;
@@ -76,6 +77,13 @@ pub fn run() {
             // No-op when the user hasn't picked one yet — the popover
             // surfaces the picker rather than firing onboarding.
             workspace::export_to_env(app.handle());
+
+            // Auto-bring-up: probe the cockpit, and if it's down (and
+            // the user has picked a workspace), shell `vaner up
+            // --detach` ourselves. Background task — the app starts
+            // immediately and the popover reacts to the
+            // `engine:bring-up` event when it lands.
+            bring_up::spawn_at_startup(app.handle().clone());
 
             // Kick off the SSE snapshot stream; the Svelte store
             // listens on `predictions:snapshot`.
@@ -153,6 +161,7 @@ pub fn run() {
             workspace::workspace_get,
             workspace::workspace_set,
             workspace::workspace_pick,
+            bring_up::bring_up_engine,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

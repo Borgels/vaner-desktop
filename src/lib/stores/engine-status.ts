@@ -35,43 +35,71 @@ export function setEngineStatus(s: EngineStatus): void {
 }
 
 let pollHandle: ReturnType<typeof setInterval> | null = null;
+let baseIntervalMs = 5000;
+let fastBoostUntil = 0;
+
+async function tick(): Promise<void> {
+  try {
+    const out = await invoke<EngineStatusOut>("engine_status");
+    engineStatus.update((prev) => ({
+      ...prev,
+      reachable: out.reachable,
+      cliMissing: out.cli_missing,
+      filesWatched: out.files_watched,
+      // Keep prev.sourcesCount until the setup-status overlay fires
+      // (we don't want to flap the reducer between
+      // .installedNotConnected and .watching).
+      uptimeMinutes: out.uptime_minutes || prev.uptimeMinutes,
+      indexing: out.indexing_kind === "learning"
+        ? { kind: "learning", currentlyReading: [], etaMinutes: null }
+        : { kind: "idle" },
+    }));
+  } catch {
+    // Defensive: invoke itself failed (Tauri runtime issue, not a
+    // CLI-missing case — the Rust side returns Ok with cli_missing
+    // for that). Flag unreachable but don't claim cliMissing.
+    engineStatus.update((prev) => ({ ...prev, reachable: false }));
+  }
+}
+
+function reschedule(): void {
+  if (pollHandle != null) clearInterval(pollHandle);
+  const interval = Date.now() < fastBoostUntil ? 500 : baseIntervalMs;
+  pollHandle = setInterval(() => {
+    if (Date.now() >= fastBoostUntil && interval !== baseIntervalMs) {
+      // Drop back to base cadence after the boost window expires.
+      reschedule();
+    }
+    void tick();
+  }, interval);
+}
 
 /** Begin polling `engine_status` from Rust every `intervalMs`. Idempotent.
  *  `sources_count` is overlaid from setup_status by a separate caller —
  *  this poll only learns reachability + indexing kind. */
 export function startEngineStatusPolling(intervalMs = 5000): void {
   if (pollHandle != null) return;
-  const tick = async () => {
-    try {
-      const out = await invoke<EngineStatusOut>("engine_status");
-      engineStatus.update((prev) => ({
-        ...prev,
-        reachable: out.reachable,
-        cliMissing: out.cli_missing,
-        filesWatched: out.files_watched,
-        // Keep prev.sourcesCount until the setup-status overlay fires
-        // (we don't want to flap the reducer between
-        // .installedNotConnected and .watching).
-        uptimeMinutes: out.uptime_minutes || prev.uptimeMinutes,
-        indexing: out.indexing_kind === "learning"
-          ? { kind: "learning", currentlyReading: [], etaMinutes: null }
-          : { kind: "idle" },
-      }));
-    } catch {
-      // Defensive: invoke itself failed (Tauri runtime issue, not a
-      // CLI-missing case — the Rust side returns Ok with cli_missing
-      // for that). Flag unreachable but don't claim cliMissing.
-      engineStatus.update((prev) => ({ ...prev, reachable: false }));
-    }
-  };
+  baseIntervalMs = intervalMs;
   void tick();
-  pollHandle = setInterval(tick, intervalMs);
+  reschedule();
 }
 
 export function stopEngineStatusPolling(): void {
   if (pollHandle != null) {
     clearInterval(pollHandle);
     pollHandle = null;
+  }
+}
+
+/** Boost polling to 500ms for `durationMs` (default 10s). Called after
+ *  a bring-up / restart so the popover flips out of `.error` within
+ *  half a second of the cockpit answering rather than waiting up to a
+ *  full 5s base interval. Overlapping boosts extend the window. */
+export function boostEngineStatusPolling(durationMs = 10_000): void {
+  fastBoostUntil = Math.max(fastBoostUntil, Date.now() + durationMs);
+  if (pollHandle != null) {
+    void tick();
+    reschedule();
   }
 }
 

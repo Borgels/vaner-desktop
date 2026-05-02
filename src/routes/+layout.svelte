@@ -9,6 +9,7 @@
   import { loadWorkspace, workspacePath } from "$lib/stores/workspace.js";
   import { get } from "svelte/store";
   import {
+    boostEngineStatusPolling,
     setSourcesCount,
     startEngineStatusPolling,
     stopEngineStatusPolling,
@@ -17,6 +18,17 @@
     startAgentDetectorPolling,
     stopAgentDetectorPolling,
   } from "$lib/stores/agent-detector.js";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { showToast } from "$lib/stores/toast.js";
+
+  type BringUpOutcome = "already_running" | "started" | "failed" | "no_workspace";
+  type BringUpEvent = {
+    outcome: BringUpOutcome;
+    workspace: string | null;
+    detail: string;
+  };
+
+  let bringUpUnlisten: UnlistenFn | null = null;
 
   let { children } = $props();
 
@@ -30,6 +42,27 @@
 
     bootstrapAppStateListeners();
     bootstrapUpdaterListeners();
+
+    // Listen for the startup auto-bring-up result. The Rust side
+    // shells `vaner up --detach` itself when the cockpit is down; we
+    // boost the engine_status poll to 500ms so the popover flips out
+    // of .error within half a second of cockpit-up, and surface a
+    // toast on failure so the user has something to act on.
+    bringUpUnlisten = await listen<BringUpEvent>("engine:bring-up", (event) => {
+      const result = event.payload;
+      if (result.outcome === "started") {
+        boostEngineStatusPolling(15_000);
+      } else if (result.outcome === "failed") {
+        boostEngineStatusPolling(15_000);
+        showToast(
+          result.detail || "Vaner could not start the engine.",
+          "attention",
+          5000,
+        );
+      }
+      // already_running and no_workspace are silent — the popover
+      // surfaces the right state on its own.
+    });
 
     // Hydrate the workspace store before anything that shells the CLI.
     // The reducer reads this synchronously to decide between
@@ -71,6 +104,7 @@
   onDestroy(() => {
     stopEngineStatusPolling();
     stopAgentDetectorPolling();
+    bringUpUnlisten?.();
   });
 </script>
 
