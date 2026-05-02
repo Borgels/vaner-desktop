@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { showToast } from "./toast.js";
 
 /**
@@ -27,6 +27,13 @@ isPaused.subscribe((p) => {
   } catch {
     /* localStorage unavailable */
   }
+  // Notify the Rust side so the tray menu can flip its row label
+  // ("Pause Vaner" ↔ "Resume Vaner"). The popover's Resume button and
+  // the tray's toggle item both feed into this same store, so a
+  // single subscriber covers every input. emit returns a Promise
+  // we deliberately discard — the tray label update is best-effort
+  // (worst case the row stays stale until the next change).
+  void emit("app:pause-changed", { paused: p });
 });
 
 export const needsAppIndicator = writable<boolean>(false);
