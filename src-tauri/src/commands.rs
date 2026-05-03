@@ -93,6 +93,106 @@ pub async fn prepared_work_action(
         .map_err(|e| format!("prepared work response decode failed: {e}"))
 }
 
+#[tauri::command]
+pub async fn focus_status() -> Result<serde_json::Value, String> {
+    reqwest::get("http://127.0.0.1:8473/focus")
+        .await
+        .map_err(|_| "Vaner is unreachable. Is the daemon running?".to_string())?
+        .error_for_status()
+        .map_err(|e| format!("focus request failed: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("focus decode failed: {e}"))
+}
+
+#[tauri::command]
+pub async fn focus_route_status() -> Result<serde_json::Value, String> {
+    reqwest::get("http://127.0.0.1:8473/focus/route")
+        .await
+        .map_err(|_| "Vaner is unreachable. Is the daemon running?".to_string())?
+        .error_for_status()
+        .map_err(|e| format!("focus route request failed: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("focus route decode failed: {e}"))
+}
+
+#[tauri::command]
+pub async fn focus_route_update(payload: serde_json::Value) -> Result<serde_json::Value, String> {
+    let body = payload.as_object().cloned().unwrap_or_default();
+    reqwest::Client::new()
+        .post("http://127.0.0.1:8473/focus/route")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|_| "Vaner is unreachable. Is the daemon running?".to_string())?
+        .error_for_status()
+        .map_err(|e| format!("focus route update failed: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("focus route decode failed: {e}"))
+}
+
+#[tauri::command]
+pub async fn focus_action(
+    action: String,
+    path: Option<String>,
+    mode: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let endpoint = match action.as_str() {
+        "work_here" => "/focus/workspaces/current/work-here",
+        "pin" => "/focus/workspaces/current/pin",
+        "unpin" => "/focus/workspaces/current/unpin",
+        "pause" => "/focus/workspaces/current/pause",
+        "resume" => "/focus/workspaces/current/resume",
+        "pause_all" => "/focus/pause-all",
+        "mode" => "/focus/mode",
+        _ => return Err("unknown focus action".to_string()),
+    };
+    let mut payload = serde_json::Map::new();
+    if let Some(path) = path {
+        payload.insert("path".to_string(), serde_json::Value::String(path));
+    }
+    if let Some(mode) = mode {
+        payload.insert("mode".to_string(), serde_json::Value::String(mode));
+    }
+    reqwest::Client::new()
+        .post(format!("http://127.0.0.1:8473{endpoint}"))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|_| "Vaner is unreachable. Is the daemon running?".to_string())?
+        .error_for_status()
+        .map_err(|e| format!("focus action failed: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("focus decode failed: {e}"))
+}
+
+#[tauri::command]
+pub async fn resources_status() -> Result<serde_json::Value, String> {
+    reqwest::get("http://127.0.0.1:8473/resources")
+        .await
+        .map_err(|_| "Vaner is unreachable. Is the daemon running?".to_string())?
+        .error_for_status()
+        .map_err(|e| format!("resources request failed: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("resources decode failed: {e}"))
+}
+
+#[tauri::command]
+pub async fn jobs_status() -> Result<serde_json::Value, String> {
+    reqwest::get("http://127.0.0.1:8473/jobs")
+        .await
+        .map_err(|_| "Vaner is unreachable. Is the daemon running?".to_string())?
+        .error_for_status()
+        .map_err(|e| format!("jobs request failed: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("jobs decode failed: {e}"))
+}
+
 /// Adopt flow:
 ///  1. POST `/predictions/{id}/adopt` to the daemon.
 ///  2. Stash the full Resolution (+ raw bytes for unknown server keys)

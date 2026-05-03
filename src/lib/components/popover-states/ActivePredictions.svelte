@@ -11,12 +11,29 @@
   import V1PrimaryButton from "$lib/components/primitives/V1PrimaryButton.svelte";
   import V1GhostButton from "$lib/components/primitives/V1GhostButton.svelte";
   import PopoverFooter from "$lib/components/PopoverFooter.svelte";
+  import PopoverContextBlock from "./PopoverContextBlock.svelte";
+  import PopoverQuickActions from "./PopoverQuickActions.svelte";
   import { showToast } from "$lib/stores/toast.js";
   import type { PredictedPrompt } from "$lib/contract/types.js";
   import { isAdoptable } from "$lib/contract/types.js";
+  import type { PopoverRuntimeContext } from "$lib/state/types.js";
 
-  type Props = { predictions: PredictedPrompt[] };
-  const { predictions }: Props = $props();
+  type Props = { predictions: PredictedPrompt[]; context: PopoverRuntimeContext };
+  const { predictions, context }: Props = $props();
+  const visiblePredictions = $derived(predictions.slice(0, 4));
+
+  function typeLabel(p: PredictedPrompt): string {
+    switch (p.spec.hypothesis_type) {
+      case "likely_next": return "next step";
+      case "possible_branch": return "opportunity";
+      case "long_tail": return "watch";
+      default: return p.source_label ?? "prediction";
+    }
+  }
+
+  function evidenceCount(p: PredictedPrompt): number {
+    return p.artifacts?.scenario_ids?.length ?? 0;
+  }
 
   async function adopt(id: string) {
     try {
@@ -34,18 +51,25 @@
 </script>
 
 <QuietShell markState="active" stateLabel={`Pondering · ${predictions.length} active`} stateLabelTint="var(--vd-st-active)">
-  <V1Kicker text="Vaner is thinking ahead" color="var(--vd-st-active)" />
+  <V1Kicker text="Likely next steps" color="var(--vd-st-active)" />
   <div class="gap-6"></div>
-  <V1Headline text={predictions[0]?.spec.label ?? "Predictions in flight"} />
+  <V1Headline text={predictions[0]?.spec.label ?? "Vaner is preparing options"} />
 
   <div class="rows">
-    {#each predictions as p, i (p.id)}
+    {#each visiblePredictions as p, i (p.id)}
       <div class="row" class:lead={i === 0}>
         <div class="row-body">
           <div class="row-label">{p.spec.label}</div>
+          {#if p.ui_summary || p.spec.description}
+            <div class="row-summary">{p.ui_summary ?? p.spec.description}</div>
+          {/if}
           <div class="row-meta">
+            <span>{typeLabel(p)}</span>
             <span class={`pill readiness-${p.run.readiness}`}>{p.run.readiness}</span>
             <span class="conf">{Math.round(p.spec.confidence * 100)}%</span>
+            {#if evidenceCount(p) > 0}
+              <span>{evidenceCount(p)} evidence</span>
+            {/if}
           </div>
         </div>
         {#if i === 0}
@@ -66,8 +90,11 @@
     {/each}
   </div>
 
+  <PopoverContextBlock {context} compact />
+  <PopoverQuickActions cockpitPrimary={false} tab="prepared" />
+
   {#snippet footer()}
-    <PopoverFooter health="active" healthLabel="Click Adopt to send to your agent" />
+    <PopoverFooter health="active" healthLabel={`Last update ${context.lastUpdateLabel}`} detailsTab="prepared" />
   {/snippet}
 </QuietShell>
 
@@ -100,8 +127,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .row-summary {
+    margin-top: 4px;
+    color: var(--vd-fg-4);
+    font-family: var(--vd-font);
+    font-size: 11px;
+    line-height: 1.35;
+  }
   .row-meta {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     margin-top: 4px;

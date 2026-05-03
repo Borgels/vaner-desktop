@@ -2,14 +2,43 @@
   import { invoke } from "@tauri-apps/api/core";
   import QuietShell from "$lib/components/primitives/QuietShell.svelte";
   import V1Kicker from "$lib/components/primitives/V1Kicker.svelte";
+  import V1Headline from "$lib/components/primitives/V1Headline.svelte";
   import V1PrimaryButton from "$lib/components/primitives/V1PrimaryButton.svelte";
   import V1GhostButton from "$lib/components/primitives/V1GhostButton.svelte";
   import PopoverFooter from "$lib/components/PopoverFooter.svelte";
+  import PopoverContextBlock from "./PopoverContextBlock.svelte";
+  import PopoverQuickActions from "./PopoverQuickActions.svelte";
   import { showToast } from "$lib/stores/toast.js";
   import type { PreparedWorkAction, PreparedWorkCard } from "$lib/contract/types.js";
+  import type { PopoverRuntimeContext } from "$lib/state/types.js";
 
-  type Props = { cards: PreparedWorkCard[] };
-  const { cards }: Props = $props();
+  type Props = { cards: PreparedWorkCard[]; context: PopoverRuntimeContext };
+  const { cards, context }: Props = $props();
+  const visibleCards = $derived(cards.slice(0, 3));
+  const readyTitle = $derived(
+    context.preparedReady === 1
+      ? "1 prepared item ready"
+      : `${Math.max(context.preparedReady, cards.length)} prepared items ready`,
+  );
+
+  function typeLabel(card: PreparedWorkCard): string {
+    switch (card.kind) {
+      case "review": return "review note";
+      case "bug": return "bug hypothesis";
+      case "docs": return "docs drift";
+      case "diff": return "virtual diff";
+      case "brief": return "research brief";
+      case "draft": return "suggested change";
+      default: return card.badge || "prepared work";
+    }
+  }
+
+  function statusLabel(card: PreparedWorkCard): string {
+    const freshness = (card.freshness_state ?? "").toLowerCase();
+    if (freshness === "stale" || freshness === "possibly_stale") return "needs review";
+    if (card.confidence_label.toLowerCase().includes("low")) return "partial";
+    return "ready";
+  }
 
   async function run(card: PreparedWorkCard, action: PreparedWorkAction) {
     if (!action.endpoint) return;
@@ -24,13 +53,15 @@
 </script>
 
 <QuietShell markState="active" stateLabel={`Prepared work · ${cards.length}`} stateLabelTint="var(--vd-st-active)">
-  <V1Kicker text="Vaner prepared this" color="var(--vd-st-active)" />
+  <V1Kicker text="Prepared work" color="var(--vd-st-active)" />
+  <div class="gap-6"></div>
+  <V1Headline text={readyTitle} />
 
   <div class="rows">
-    {#each cards as card, i (card.id)}
+    {#each visibleCards as card, i (card.id)}
       <article class="row">
         <div class="top">
-          <span class="badge">{card.badge}</span>
+          <span class="badge">{typeLabel(card)}</span>
           <div class="title">{card.title}</div>
         </div>
         <div class="summary">{card.summary}</div>
@@ -38,11 +69,12 @@
           <div class="why">{card.why_prepared}</div>
         {/if}
         <div class="meta">
+          <span>{statusLabel(card)}</span>
           <span>{card.confidence_label}</span>
           <span>{card.freshness_label}</span>
           <span>{card.target_label}</span>
           {#if card.evidence_count > 0}
-            <span>{card.evidence_count} sources</span>
+            <span>{card.evidence_count} evidence</span>
           {/if}
         </div>
         {#if card.action_note}
@@ -66,12 +98,16 @@
     {/each}
   </div>
 
+  <PopoverContextBlock {context} compact />
+  <PopoverQuickActions cockpitPrimary={false} tab="prepared" />
+
   {#snippet footer()}
-    <PopoverFooter health="active" healthLabel="Inspect before using" />
+    <PopoverFooter health="active" healthLabel={`Last update ${context.lastUpdateLabel}`} detailsTab="prepared" />
   {/snippet}
 </QuietShell>
 
 <style>
+  .gap-6 { height: 6px; }
   .rows {
     display: flex;
     flex-direction: column;
