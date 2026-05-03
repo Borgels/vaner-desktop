@@ -38,6 +38,7 @@
   // which is the actual integration surface.
   const tabs: Tab[] = [
     { id: "prepared", label: "Prepared", showsTimeline: true },
+    { id: "focus", label: "Workspace" },
     { id: "agents", label: "Agents" },
     { id: "models", label: "Models" },
     { id: "engine", label: "Engine" },

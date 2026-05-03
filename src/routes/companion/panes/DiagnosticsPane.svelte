@@ -19,6 +19,8 @@
   import { showToast } from "$lib/stores/toast.js";
 
   let appVersion = $state<string>("…");
+  const frontendBuild = __APP_BUILD_ID__;
+  const frontendBuiltAt = __APP_BUILD_TIME__;
   let actionDetail = $state<string | null>(null);
 
   onMount(async () => {
@@ -57,7 +59,9 @@
 <section class="block">
   <VSectionLabel text="App" />
   <div class="kv">
-    <span>Desktop app</span><span>{appVersion}</span>
+    <span>Desktop shell</span><span>{appVersion}</span>
+    <span>Frontend build</span><span>{frontendBuild}</span>
+    <span>Built at</span><span>{frontendBuiltAt}</span>
   </div>
 </section>
 
